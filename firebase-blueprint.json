@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and learning statistics",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID" },
+        "email": { "type": "string", "description": "User email address" },
+        "role": { "type": "string", "enum": ["teacher", "student"], "description": "User role" },
+        "streak": { "type": "number", "description": "Current learning streak in days" },
+        "lastActive": { "type": "string", "format": "date-time", "description": "Last active timestamp" },
+        "teacherId": { "type": "string", "description": "For students: the UID of their teacher" },
+        "inviteCode": { "type": "string", "description": "For teachers: the code students use to join" }
+      },
+      "required": ["uid", "email", "role", "streak", "lastActive"]
+    },
+    "Lesson": {
+      "title": "Lesson",
+      "description": "A listening lesson containing metadata",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the lesson" },
+        "authorId": { "type": "string", "description": "UID of the admin who created the lesson" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "sentenceCount": { "type": "number", "description": "Number of sentences in the lesson" }
+      },
+      "required": ["title", "authorId", "createdAt", "sentenceCount"]
+    },
+    "Sentence": {
+      "title": "Sentence",
+      "description": "A single sentence within a lesson, including its audio",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "description": "The text of the sentence" },
+        "audioBase64": { "type": "string", "description": "Base64 encoded audio data" },
+        "orderIndex": { "type": "number", "description": "The sequential order of the sentence in the lesson" }
+      },
+      "required": ["text", "audioBase64", "orderIndex"]
+    },
+    "Progress": {
+      "title": "Progress",
+      "description": "User's progress on a specific lesson mode",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "User ID" },
+        "lessonId": { "type": "string", "description": "Lesson ID" },
+        "mode": { "type": "string", "enum": ["dictation", "gap-fill", "shadowing"], "description": "The learning mode" },
+        "score": { "type": "number", "description": "Score achieved (0-100)" },
+        "completedAt": { "type": "string", "format": "date-time", "description": "Completion timestamp" }
+      },
+      "required": ["userId", "lessonId", "mode", "score", "completedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles and stats"
+    },
+    "/lessons/{lessonId}": {
+      "schema": { "$ref": "#/entities/Lesson" },
+      "description": "Stores lesson metadata"
+    },
+    "/lessons/{lessonId}/sentences/{sentenceId}": {
+      "schema": { "$ref": "#/entities/Sentence" },
+      "description": "Stores individual sentences and audio for a lesson"
+    },
+    "/progress/{progressId}": {
+      "schema": { "$ref": "#/entities/Progress" },
+      "description": "Stores user progress records"
+    }
+  }
+}

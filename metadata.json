@@ -1,0 +1,7 @@
+{
+  "name": "EchoMaster: Intensive English",
+  "description": "A professional intensive listening app featuring dictation, gap-filling, and shadowing modes with AI-powered sentence segmenting.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

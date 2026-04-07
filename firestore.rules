@@ -1,0 +1,111 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isTeacher() {
+      let hasDoc = exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      return hasDoc && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    function getMyTeacherId() {
+      let hasDoc = exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      return hasDoc ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teacherId : null;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser() {
+      let data = request.resource.data;
+      return hasRequiredFields(['uid', 'email', 'role']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.role in ['teacher', 'student'];
+    }
+
+    function isValidLesson() {
+      let data = request.resource.data;
+      return hasRequiredFields(['title', 'authorId', 'createdAt', 'sentenceCount']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.authorId is string && data.authorId == request.auth.uid &&
+             data.createdAt is timestamp &&
+             data.sentenceCount is number && data.sentenceCount > 0 && data.sentenceCount <= 200;
+    }
+
+    function isValidSentence() {
+      let data = request.resource.data;
+      return hasRequiredFields(['text', 'audioBase64', 'orderIndex']) &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 2000 &&
+             data.audioBase64 is string && data.audioBase64.size() > 0 && data.audioBase64.size() < 1048576 && // Max 1MB
+             data.orderIndex is number && data.orderIndex >= 0;
+    }
+
+    function isValidProgress() {
+      let data = request.resource.data;
+      return hasRequiredFields(['userId', 'lessonId', 'mode', 'score', 'completedAt']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.lessonId is string && data.lessonId.size() > 0 &&
+             data.mode in ['dictation', 'gap-fill', 'shadowing'] &&
+             data.score is number && data.score >= 0 && data.score <= 100 &&
+             data.completedAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    
+    match /users/{userId} {
+      // Users can read their own profile. Teachers can read their students. Students can read teacher profiles (to link).
+      allow read: if isOwner(userId) || 
+                     (resource != null && isTeacher() && resource.data.teacherId == request.auth.uid) ||
+                     (resource != null && isAuthenticated() && resource.data.role == 'teacher');
+      allow create: if isOwner(userId) && isValidUser();
+      allow update: if isOwner(userId) && isValidUser() && (
+        resource == null || 
+        !('role' in resource.data) || 
+        request.resource.data.role == resource.data.role ||
+        (request.resource.data.role == 'teacher' && 'email' in request.auth.token && request.auth.token.email == 'guchengslash@gmail.com')
+      );
+      allow delete: if false; 
+    }
+
+    match /lessons/{lessonId} {
+      // Teachers can read their own lessons. Students can read their teacher's lessons.
+      allow read: if resource != null && ((isTeacher() && resource.data.authorId == request.auth.uid) || 
+                     (!isTeacher() && resource.data.authorId == getMyTeacherId()));
+      allow create, update, delete: if isTeacher() && isValidLesson();
+
+      match /sentences/{sentenceId} {
+        // Inherit read access from parent lesson
+        allow read: if (isTeacher() && get(/databases/$(database)/documents/lessons/$(lessonId)).data.authorId == request.auth.uid) || 
+                       (!isTeacher() && get(/databases/$(database)/documents/lessons/$(lessonId)).data.authorId == getMyTeacherId());
+        allow create, update, delete: if isTeacher() && isValidSentence();
+      }
+    }
+
+    match /progress/{progressId} {
+      // Students read their own. Teachers read their students'.
+      allow read: if resource != null && (isOwner(resource.data.userId) || 
+                     (isTeacher() && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.teacherId == request.auth.uid));
+      allow create: if isOwner(request.resource.data.userId) && isValidProgress();
+      allow update: if resource != null && isOwner(resource.data.userId) && isValidProgress() && request.resource.data.userId == resource.data.userId;
+      allow delete: if resource != null && isOwner(resource.data.userId);
+    }
+  }
+}
