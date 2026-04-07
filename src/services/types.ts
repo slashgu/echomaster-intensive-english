@@ -4,6 +4,8 @@ export interface User {
   role: 'teacher' | 'student';
   teacherId?: string;
   inviteCode?: string;
+  streak?: number;
+  lastActive?: any;
 }
 
 export interface Lesson {
@@ -18,6 +20,7 @@ export interface Sentence {
   id: string;
   text: string;
   audioBase64: string;
+  explanation?: string;
   orderIndex: number;
 }
 

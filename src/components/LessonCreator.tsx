@@ -42,9 +42,12 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
         const sentenceText = sentences[i].trim();
         if (!sentenceText) continue;
 
-        setProgress({ current: i + 1, total: sentences.length, status: `Generating audio for sentence ${i + 1}...` });
+        setProgress({ current: i + 1, total: sentences.length, status: `Processing sentence ${i + 1}...` });
         
-        const audioBase64 = await llmService.generateAudioForSentence(sentenceText);
+        const [audioBase64, explanation] = await Promise.all([
+          llmService.generateAudioForSentence(sentenceText),
+          llmService.explainWordOrPhrase(sentenceText, sentenceText)
+        ]);
         
         if (!audioBase64) {
           throw new Error(`Failed to generate audio for sentence: "${sentenceText}"`);
@@ -54,6 +57,7 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
         await dbService.addSentenceToLesson(lessonId, {
           text: sentenceText,
           audioBase64: audioBase64,
+          explanation: explanation,
           orderIndex: i
         });
       }

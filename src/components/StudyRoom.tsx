@@ -147,11 +147,15 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
 
   const handleExplain = async () => {
     if (!currentSentence) return;
-    setIsExplaining(true);
     setShowExplanation(true);
-    const result = await llmService.explainWordOrPhrase(currentSentence.text, currentSentence.text);
-    setExplanation(result);
-    setIsExplaining(false);
+    if (currentSentence.explanation) {
+      setExplanation(currentSentence.explanation);
+    } else {
+      setIsExplaining(true);
+      const result = await llmService.explainWordOrPhrase(currentSentence.text, currentSentence.text);
+      setExplanation(result);
+      setIsExplaining(false);
+    }
   };
 
   const checkDictation = () => {

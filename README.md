@@ -10,11 +10,10 @@ View your app in AI Studio: https://ai.studio/apps/73936aad-4655-486c-a5b5-9c3e5
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:**  Node.js, Vercel CLI (`npm i -g vercel`)
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+2. Since this app uses Vercel Serverless Functions (`/api`), use the Vercel CLI to run it locally so the functions are emulated:
+   `vercel dev`
+3. If it asks to link to a project, follow the prompts. Ensure your Vercel project has the `GEMINI_API_KEY` and `VITE_FIREBASE_API_KEY` environment variables configured, or provide them locally in a `.env.local` file.
