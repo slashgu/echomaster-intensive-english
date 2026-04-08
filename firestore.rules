@@ -53,7 +53,8 @@ service cloud.firestore {
       return hasRequiredFields(['text', 'audioBase64', 'orderIndex']) &&
              data.text is string && data.text.size() > 0 && data.text.size() < 2000 &&
              data.audioBase64 is string && data.audioBase64.size() > 0 && data.audioBase64.size() < 1048576 && // Max 1MB
-             data.orderIndex is number && data.orderIndex >= 0;
+             data.orderIndex is number && data.orderIndex >= 0 &&
+             (!('gapIndexes' in data) || data.gapIndexes is list);
     }
 
     function isValidProgress() {
@@ -63,26 +64,23 @@ service cloud.firestore {
              data.lessonId is string && data.lessonId.size() > 0 &&
              data.mode in ['dictation', 'gap-fill'] &&
              data.score is number && data.score >= 0 && data.score <= 100 &&
-             data.completedAt is timestamp;
+             data.completedAt is timestamp &&
+             (!('answers' in data) || data.answers is list);
     }
 
     // ===============================================================
     // Rules
     // ===============================================================
-    
+
     match /users/{userId} {
-      // Users can read their own profile. Teachers can read their students. Students can read teacher profiles (to link).
-      allow read: if isOwner(userId) || 
-                     (resource != null && isTeacher() && resource.data.teacherId == request.auth.uid) ||
-                     (resource != null && isAuthenticated() && resource.data.role == 'teacher');
-      allow create: if isOwner(userId) && isValidUser();
-      allow update: if isOwner(userId) && isValidUser() && (
-        resource == null || 
-        !('role' in resource.data) || 
-        request.resource.data.role == resource.data.role ||
-        (request.resource.data.role == 'teacher' && 'email' in request.auth.token && request.auth.token.email == 'guchengslash@gmail.com')
+      // Users can read themselves. Teachers can read their students. Anyone can read a teacher (to link).
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        (isTeacher() && resource.data.teacherId == request.auth.uid) ||
+        resource.data.role == 'teacher'
       );
-      allow delete: if false; 
+      allow create: if isAuthenticated() && request.auth.uid == userId && isValidUser();
+      allow update: if isAuthenticated() && request.auth.uid == userId;
     }
 
     match /lessons/{lessonId} {
