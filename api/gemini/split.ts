@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Split the following text into individual sentences. Return ONLY a JSON array of strings, where each string is a sentence. Do not include any markdown formatting or other text.\n\nText:\n${text}`,
+      contents: `Split the following text into short clauses/phrases. Break the text by punctuation marks including periods, exclamation marks, question marks, AND commas, so that no single segment is too long. Return ONLY a JSON array of strings, where each string is a segment. Do not include any markdown formatting or other text.\n\nText:\n${text}`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -33,6 +33,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ sentences: Array.isArray(sentences) ? sentences : [text] });
   } catch (error) {
     console.error("Error splitting sentences via API:", error);
-    return res.status(200).json({ sentences: text.match(/[^.!?]+[.!?]+/g) || [text] });
+    return res.status(200).json({ sentences: text.split(/(?<=[.!?]+|,)\s*/).filter(Boolean) || [text] });
   }
 }
