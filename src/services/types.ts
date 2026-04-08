@@ -22,6 +22,7 @@ export interface Sentence {
   audioBase64: string;
   explanation?: string;
   orderIndex: number;
+  gapIndexes?: number[];
 }
 
 export interface Progress {
@@ -31,6 +32,13 @@ export interface Progress {
   mode: 'dictation' | 'gap-fill';
   score: number;
   completedAt: any;
+  answers?: ProgressAnswer[];
+}
+
+export interface ProgressAnswer {
+  sentenceId: string;
+  originalText: string;
+  userAnswer: string | Record<number, string>;
 }
 
 export interface IAuthService {
@@ -48,6 +56,7 @@ export interface IDatabaseService {
   deleteLesson(lessonId: string): Promise<void>;
   subscribeToSentences(lessonId: string, callback: (sentences: Sentence[]) => void, onError: (error: Error) => void): () => void;
   addSentenceToLesson(lessonId: string, sentence: Omit<Sentence, 'id'>): Promise<void>;
+  updateSentenceGaps(lessonId: string, sentenceId: string, gapIndexes: number[]): Promise<void>;
   
   // New methods for Teacher/Student roles
   subscribeToStudents(teacherId: string, callback: (students: User[]) => void, onError: (error: Error) => void): () => void;

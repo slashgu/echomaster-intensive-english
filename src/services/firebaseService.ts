@@ -1,6 +1,6 @@
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { collection, query, orderBy, onSnapshot, doc, setDoc, getDoc, serverTimestamp, where, addDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, setDoc, getDoc, serverTimestamp, where, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { IAuthService, IDatabaseService, User, Lesson, Sentence, Progress } from './types';
 
 export const firebaseAuthService: IAuthService = {
@@ -160,6 +160,10 @@ export const firebaseDbService: IDatabaseService = {
   async addSentenceToLesson(lessonId, sentence) {
     const sentenceRef = doc(collection(db, `lessons/${lessonId}/sentences`));
     await setDoc(sentenceRef, sentence);
+  },
+  async updateSentenceGaps(lessonId, sentenceId, gapIndexes) {
+    const sentenceRef = doc(db, `lessons/${lessonId}/sentences`, sentenceId);
+    await updateDoc(sentenceRef, { gapIndexes });
   },
   subscribeToStudents(teacherId, callback, onError) {
     const q = query(collection(db, 'users'), where('role', '==', 'student'), where('teacherId', '==', teacherId));

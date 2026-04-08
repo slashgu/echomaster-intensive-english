@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService, llmService, authService } from '../services';
-import { Sentence } from '../services/types';
+import { Sentence, ProgressAnswer } from '../services/types';
 import { ArrowLeft, Play, Pause, Repeat, FastForward, Rewind, HelpCircle, Mic, CheckCircle2, Save } from 'lucide-react';
 import clsx from 'clsx';
 import ReactMarkdown from 'react-markdown';
@@ -32,6 +32,9 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   const [sentencePieces, setSentencePieces] = useState<string[]>([]);
   const [gaps, setGaps] = useState<number[]>([]);
   const [gapValues, setGapValues] = useState<Record<number, string>>({});
+  
+  // Progress tracking
+  const [sessionAnswers, setSessionAnswers] = useState<Record<string, ProgressAnswer>>({});
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -66,10 +69,13 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
         }
       });
       
-      // Select ~30% of words as gaps
-      const gapCount = Math.max(1, Math.floor(wordIndexes.length * 0.3));
-      const shuffled = [...wordIndexes].sort(() => 0.5 - Math.random());
-      const selectedGaps = shuffled.slice(0, gapCount).sort((a,b) => a-b);
+      let selectedGaps = sentence.gapIndexes || [];
+      if (selectedGaps.length === 0) {
+        // Fallback to random 30% if teacher hasn't configured gaps
+        const gapCount = Math.max(1, Math.floor(wordIndexes.length * 0.3));
+        const shuffled = [...wordIndexes].sort(() => 0.5 - Math.random());
+        selectedGaps = shuffled.slice(0, gapCount).sort((a,b) => a-b);
+      }
       
       setGaps(selectedGaps);
       setGapValues({});
@@ -102,6 +108,19 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   }, [currentIndex, showExplanation, sentences]);
 
   const currentSentence = sentences[currentIndex];
+
+  useEffect(() => {
+    if (currentSentence) {
+      setSessionAnswers(prev => ({
+        ...prev,
+        [currentSentence.id]: {
+          sentenceId: currentSentence.id,
+          originalText: currentSentence.text,
+          userAnswer: mode === 'dictation' ? dictationInput : { ...gapValues }
+        }
+      }));
+    }
+  }, [dictationInput, gapValues, currentSentence, mode]);
 
   const handlePlayPause = () => {
     if (!audioRef.current) return;
@@ -139,7 +158,8 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
         lessonId,
         mode,
         score: 100, // Simplified for MVP
-        completedAt: new Date()
+        completedAt: new Date(),
+        answers: Object.values(sessionAnswers)
       });
       alert('Progress saved successfully!');
       onBack();
