@@ -61,7 +61,7 @@ service cloud.firestore {
       return hasRequiredFields(['userId', 'lessonId', 'mode', 'score', 'completedAt']) &&
              data.userId is string && data.userId == request.auth.uid &&
              data.lessonId is string && data.lessonId.size() > 0 &&
-             data.mode in ['dictation', 'gap-fill', 'shadowing'] &&
+             data.mode in ['dictation', 'gap-fill'] &&
              data.score is number && data.score >= 0 && data.score <= 100 &&
              data.completedAt is timestamp;
     }
