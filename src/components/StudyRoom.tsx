@@ -27,6 +27,11 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   const [explanation, setExplanation] = useState('');
   const [isExplaining, setIsExplaining] = useState(false);
   
+  // Gap-fill state
+  const [sentencePieces, setSentencePieces] = useState<string[]>([]);
+  const [gaps, setGaps] = useState<number[]>([]);
+  const [gapValues, setGapValues] = useState<Record<number, string>>({});
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -45,6 +50,30 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
       audioRef.current.playbackRate = playbackRate;
     }
   }, [playbackRate, currentIndex]);
+
+  useEffect(() => {
+    if (mode === 'gap-fill' && sentences[currentIndex]) {
+      const sentence = sentences[currentIndex];
+      // Split by words, preserving punctuation and spaces
+      const pieces = sentence.text.split(/(\b\w+\b)/);
+      setSentencePieces(pieces);
+      
+      const wordIndexes: number[] = [];
+      pieces.forEach((piece, index) => {
+        if (/^\w+$/.test(piece)) {
+          wordIndexes.push(index);
+        }
+      });
+      
+      // Select ~30% of words as gaps
+      const gapCount = Math.max(1, Math.floor(wordIndexes.length * 0.3));
+      const shuffled = [...wordIndexes].sort(() => 0.5 - Math.random());
+      const selectedGaps = shuffled.slice(0, gapCount).sort((a,b) => a-b);
+      
+      setGaps(selectedGaps);
+      setGapValues({});
+    }
+  }, [currentIndex, mode, sentences]);
 
   const currentSentence = sentences[currentIndex];
 
@@ -115,6 +144,12 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   };
 
   const isCorrect = checkDictation();
+
+  const allGapsCorrect = gaps.length > 0 && gaps.every(gapIndex => {
+    const original = sentencePieces[gapIndex].toLowerCase();
+    const current = (gapValues[gapIndex] || '').trim().toLowerCase();
+    return original === current;
+  });
 
   const getAudioSrc = (base64: string) => {
     if (!base64) return '';
@@ -318,10 +353,55 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
           )}
 
           {mode === 'gap-fill' && (
-            <div className="flex-1 flex flex-col gap-4 items-center justify-center text-center">
-               <h3 className="text-lg font-medium text-gray-900 mb-4">Gap-fill mode (Coming soon)</h3>
-               <p className="text-gray-500">In a full version, random words would be blanked out.</p>
-               <p className="text-xl font-medium text-gray-800 mt-4">{currentSentence?.text}</p>
+            <div className="flex-1 flex flex-col gap-6">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-lg font-medium text-gray-900">Fill in the blanks</h3>
+                <button onClick={handleExplain} className="text-sm text-indigo-600 flex items-center gap-1 hover:underline">
+                  <HelpCircle className="h-4 w-4" /> AI Help
+                </button>
+              </div>
+
+              <div className="text-xl sm:text-2xl leading-loose font-medium text-gray-800 p-6 bg-gray-50 rounded-xl border border-gray-200">
+                {sentencePieces.map((piece, index) => {
+                  if (gaps.includes(index)) {
+                    const isCorrect = (gapValues[index] || '').trim().toLowerCase() === piece.toLowerCase();
+                    return (
+                      <input
+                        key={index}
+                        type="text"
+                        value={gapValues[index] || ''}
+                        onChange={(e) => setGapValues({ ...gapValues, [index]: e.target.value })}
+                        className={clsx(
+                          "mx-1 px-2 py-1 text-center border-b-2 bg-transparent focus:outline-none transition-colors",
+                          isCorrect 
+                            ? "border-green-500 text-green-700 bg-green-50" 
+                            : "border-indigo-400 focus:border-indigo-600 focus:bg-white"
+                        )}
+                        style={{ width: `${Math.max(3, piece.length)}ch` }}
+                      />
+                    );
+                  }
+                  return <span key={index}>{piece}</span>;
+                })}
+              </div>
+
+              {allGapsCorrect && gaps.length > 0 && (
+                <div className="flex items-center text-green-600 gap-2 font-medium justify-center mt-4 bg-green-50 p-4 rounded-lg border border-green-200">
+                  <CheckCircle2 className="h-6 w-6" /> Perfect! You filled all the blanks.
+                </div>
+              )}
+
+              {showExplanation && (
+                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 mt-auto">
+                  <h4 className="font-medium text-indigo-900 mb-2">Original Text & Explanation</h4>
+                  <p className="text-gray-800 font-medium mb-2">{currentSentence?.text}</p>
+                  {isExplaining ? (
+                    <div className="animate-pulse text-indigo-600 text-sm">Generating explanation...</div>
+                  ) : (
+                    <p className="text-sm text-gray-600">{explanation}</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
