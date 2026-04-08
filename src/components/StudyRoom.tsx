@@ -76,6 +76,31 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
     }
   }, [currentIndex, mode, sentences]);
 
+  useEffect(() => {
+    // Sync UI states when changing sentences or toggling explanation
+    setDictationInput('');
+    setIsExplaining(false);
+
+    if (showExplanation && sentences[currentIndex]) {
+      const sentence = sentences[currentIndex];
+      if (sentence.explanation) {
+        setExplanation(sentence.explanation);
+      } else {
+        setIsExplaining(true);
+        llmService.explainWordOrPhrase(sentence.text, sentence.text)
+          .then(result => {
+            setExplanation(result);
+            setIsExplaining(false);
+          })
+          .catch(err => {
+            console.error(err);
+            setExplanation("Explanation failed to load.");
+            setIsExplaining(false);
+          });
+      }
+    }
+  }, [currentIndex, showExplanation, sentences]);
+
   const currentSentence = sentences[currentIndex];
 
   const handlePlayPause = () => {
@@ -124,17 +149,8 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
     }
   };
 
-  const handleExplain = async () => {
-    if (!currentSentence) return;
-    setShowExplanation(true);
-    if (currentSentence.explanation) {
-      setExplanation(currentSentence.explanation);
-    } else {
-      setIsExplaining(true);
-      const result = await llmService.explainWordOrPhrase(currentSentence.text, currentSentence.text);
-      setExplanation(result);
-      setIsExplaining(false);
-    }
+  const handleExplain = () => {
+    setShowExplanation(prev => !prev);
   };
 
   const checkDictation = () => {
@@ -272,8 +288,6 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
               <button 
                 onClick={() => {
                   setCurrentIndex(Math.min(sentences.length - 1, currentIndex + 1));
-                  setDictationInput('');
-                  setShowExplanation(false);
                 }}
                 disabled={currentIndex === sentences.length - 1}
                 className="p-2 text-gray-400 hover:text-indigo-600 disabled:opacity-50"
