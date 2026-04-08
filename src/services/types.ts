@@ -45,6 +45,7 @@ export interface IDatabaseService {
   ensureUserExists(user: User): Promise<User>;
   subscribeToLessons(authorId: string, callback: (lessons: Lesson[]) => void, onError: (error: Error) => void): () => void;
   createLesson(title: string, authorId: string, sentenceCount: number): Promise<string>;
+  deleteLesson(lessonId: string): Promise<void>;
   subscribeToSentences(lessonId: string, callback: (sentences: Sentence[]) => void, onError: (error: Error) => void): () => void;
   addSentenceToLesson(lessonId: string, sentence: Omit<Sentence, 'id'>): Promise<void>;
   

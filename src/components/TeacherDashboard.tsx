@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { authService, dbService } from '../services';
 import { Lesson, User, Progress } from '../services/types';
-import { Plus, BookOpen, Users, LogOut, Activity, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Plus, BookOpen, Users, LogOut, Activity, ChevronRight, ArrowLeft, Trash2 } from 'lucide-react';
 import { LessonCreator } from './LessonCreator';
 
 interface TeacherDashboardProps {
@@ -141,11 +141,30 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
                 {lessons.map((lesson) => (
                   <div
                     key={lesson.id}
-                    className="bg-white overflow-hidden shadow rounded-lg border border-gray-200 hover:border-indigo-500 transition-colors cursor-pointer"
+                    className="bg-white overflow-hidden shadow rounded-lg border border-gray-200 hover:border-indigo-500 transition-colors cursor-pointer relative group"
                     onClick={() => onSelectLesson(lesson.id)}
                   >
                     <div className="px-4 py-5 sm:p-6">
-                      <h3 className="text-lg font-medium text-gray-900 truncate">{lesson.title}</h3>
+                      <div className="flex justify-between items-start">
+                        <h3 className="text-lg font-medium text-gray-900 truncate pr-8">{lesson.title}</h3>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (window.confirm('Are you sure you want to delete this lesson?')) {
+                              try {
+                                await dbService.deleteLesson(lesson.id);
+                              } catch (err) {
+                                console.error('Failed to delete lesson:', err);
+                                alert('Failed to delete lesson.');
+                              }
+                            }
+                          }}
+                          className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 absolute top-4 right-4"
+                          title="Delete Lesson"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </button>
+                      </div>
                       <div className="mt-2 flex items-center text-sm text-gray-500">
                         <Activity className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
                         {lesson.sentenceCount} sentences

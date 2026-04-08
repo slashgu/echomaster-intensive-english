@@ -1,6 +1,6 @@
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { collection, query, orderBy, onSnapshot, doc, setDoc, getDoc, serverTimestamp, where, addDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, setDoc, getDoc, serverTimestamp, where, addDoc, deleteDoc } from 'firebase/firestore';
 import { IAuthService, IDatabaseService, User, Lesson, Sentence, Progress } from './types';
 
 export const firebaseAuthService: IAuthService = {
@@ -140,6 +140,9 @@ export const firebaseDbService: IDatabaseService = {
       sentenceCount
     });
     return lessonRef.id;
+  },
+  async deleteLesson(lessonId) {
+    await deleteDoc(doc(db, 'lessons', lessonId));
   },
   subscribeToSentences(lessonId, callback, onError) {
     const q = query(collection(db, `lessons/${lessonId}/sentences`), orderBy('orderIndex', 'asc'));
