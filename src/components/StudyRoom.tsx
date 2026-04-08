@@ -9,7 +9,7 @@ interface StudyRoomProps {
   onBack: () => void;
 }
 
-type Mode = 'dictation' | 'gap-fill' | 'shadowing';
+type Mode = 'dictation' | 'gap-fill';
 
 export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -27,58 +27,7 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   const [explanation, setExplanation] = useState('');
   const [isExplaining, setIsExplaining] = useState(false);
   
-  // Shadowing specific state
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Clear recorded audio when changing sentences
-  useEffect(() => {
-    if (recordedAudioUrl) {
-      URL.revokeObjectURL(recordedAudioUrl);
-      setRecordedAudioUrl(null);
-    }
-  }, [currentIndex]);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        setRecordedAudioUrl(audioUrl);
-        // Stop all tracks to release microphone
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordedAudioUrl(null);
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-      alert("Could not access microphone. Please check your browser permissions.");
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
 
   useEffect(() => {
     const unsubscribe = dbService.subscribeToSentences(lessonId, (data) => {
@@ -229,7 +178,7 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
             Back
           </button>
           <div className="flex space-x-2">
-            {(['dictation', 'gap-fill', 'shadowing'] as Mode[]).map(m => (
+            {(['dictation', 'gap-fill'] as Mode[]).map(m => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
@@ -375,46 +324,6 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
                <p className="text-xl font-medium text-gray-800 mt-4">{currentSentence?.text}</p>
             </div>
           )}
-
-          {mode === 'shadowing' && (
-            <div className="flex-1 flex flex-col gap-8 items-center justify-center">
-              <div className="text-center space-y-4">
-                <h3 className="text-lg font-medium text-gray-900">Listen and Repeat</h3>
-                <p className="text-2xl font-medium text-gray-800 max-w-2xl leading-relaxed">
-                  {currentSentence?.text}
-                </p>
-              </div>
-              
-              <div className="flex flex-col items-center gap-4">
-                <button 
-                  onMouseDown={startRecording}
-                  onMouseUp={stopRecording}
-                  onMouseLeave={stopRecording}
-                  onTouchStart={startRecording}
-                  onTouchEnd={stopRecording}
-                  className={clsx(
-                    "p-6 rounded-full transition-all duration-200 shadow-md",
-                    isRecording 
-                      ? "bg-red-600 text-white scale-110 animate-pulse shadow-red-200" 
-                      : "bg-red-100 text-red-600 hover:bg-red-200"
-                  )}
-                >
-                  <Mic className="h-8 w-8" />
-                </button>
-                <p className="text-sm text-gray-500 font-medium">
-                  {isRecording ? "Recording... Release to stop" : "Hold to record your voice"}
-                </p>
-              </div>
-
-              {recordedAudioUrl && (
-                <div className="mt-4 w-full max-w-md bg-gray-50 p-4 rounded-lg border border-gray-200 flex flex-col gap-2">
-                  <span className="text-sm font-medium text-gray-700">Your Recording:</span>
-                  <audio src={recordedAudioUrl} controls className="w-full h-10" />
-                </div>
-              )}
-            </div>
-          )}
-
         </div>
       </main>
     </div>

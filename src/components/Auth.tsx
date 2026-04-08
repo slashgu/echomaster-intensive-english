@@ -49,7 +49,7 @@ export function Auth() {
             EchoMaster
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Intensive English Listening & Shadowing
+            Intensive English Listening
           </p>
         </div>
         

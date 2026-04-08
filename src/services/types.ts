@@ -28,7 +28,7 @@ export interface Progress {
   id?: string;
   userId: string;
   lessonId: string;
-  mode: 'dictation' | 'gap-fill' | 'shadowing';
+  mode: 'dictation' | 'gap-fill';
   score: number;
   completedAt: any;
 }
