@@ -378,7 +378,7 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
                         value={val}
                         onChange={(e) => setGapValues({ ...gapValues, [index]: e.target.value })}
                         className={clsx(
-                          "px-3 py-1 text-center border-2 rounded-full focus:outline-none focus:border-indigo-500 transition-all shadow-sm",
+                          "m-0 inline-block align-middle px-3 py-1 text-center border-2 rounded-full focus:outline-none focus:border-indigo-500 transition-all shadow-sm leading-normal",
                           isCorrect 
                             ? "bg-green-100 border-green-400 text-green-700 font-medium" 
                             : "bg-white border-indigo-200 text-indigo-700"
@@ -388,7 +388,7 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
                     );
                   }
                   return (
-                    <span key={index} className="px-3 py-1 bg-white border-2 border-gray-200 text-gray-700 rounded-full shadow-sm">
+                    <span key={index} className="m-0 inline-block align-middle px-3 py-1 bg-white border-2 border-gray-200 text-gray-700 rounded-full shadow-sm leading-normal">
                       {piece}
                     </span>
                   );
