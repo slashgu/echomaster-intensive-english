@@ -388,7 +388,7 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
                     );
                   }
                   return (
-                    <span key={index} className="px-3 py-1 bg-white border border-gray-200 text-gray-700 rounded-full shadow-sm">
+                    <span key={index} className="px-3 py-1 bg-white border-2 border-gray-200 text-gray-700 rounded-full shadow-sm">
                       {piece}
                     </span>
                   );
