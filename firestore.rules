@@ -89,13 +89,15 @@ service cloud.firestore {
       // Teachers can read their own lessons. Students can read their teacher's lessons.
       allow read: if resource != null && ((isTeacher() && resource.data.authorId == request.auth.uid) || 
                      (!isTeacher() && resource.data.authorId == getMyTeacherId()));
-      allow create, update, delete: if isTeacher() && isValidLesson();
+      allow create, update: if isTeacher() && isValidLesson();
+      allow delete: if isTeacher() && resource != null && resource.data.authorId == request.auth.uid;
 
       match /sentences/{sentenceId} {
         // Inherit read access from parent lesson
         allow read: if (isTeacher() && get(/databases/$(database)/documents/lessons/$(lessonId)).data.authorId == request.auth.uid) || 
                        (!isTeacher() && get(/databases/$(database)/documents/lessons/$(lessonId)).data.authorId == getMyTeacherId());
-        allow create, update, delete: if isTeacher() && isValidSentence();
+        allow create, update: if isTeacher() && isValidSentence();
+        allow delete: if isTeacher();
       }
     }
 
