@@ -3,6 +3,7 @@ import { dbService, llmService, authService } from '../services';
 import { Sentence } from '../services/types';
 import { ArrowLeft, Play, Pause, Repeat, FastForward, Rewind, HelpCircle, Mic, CheckCircle2, Save } from 'lucide-react';
 import clsx from 'clsx';
+import ReactMarkdown from 'react-markdown';
 
 interface StudyRoomProps {
   lessonId: string;
@@ -345,7 +346,18 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
                   {isExplaining ? (
                     <div className="animate-pulse text-indigo-600 text-sm">Generating explanation...</div>
                   ) : (
-                    <p className="text-sm text-gray-600">{explanation}</p>
+                    <div className="text-sm text-gray-700 leading-relaxed space-y-2">
+                      <ReactMarkdown 
+                        components={{
+                          strong: ({node, ...props}) => <strong className="font-bold text-gray-900" {...props} />,
+                          ul: ({node, ...props}) => <ul className="list-disc pl-5 mt-2 space-y-1" {...props} />,
+                          ol: ({node, ...props}) => <ol className="list-decimal pl-5 mt-2 space-y-1" {...props} />,
+                          p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />
+                        }}
+                      >
+                        {explanation}
+                      </ReactMarkdown>
+                    </div>
                   )}
                 </div>
               )}
@@ -408,7 +420,18 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
                   {isExplaining ? (
                     <div className="animate-pulse text-indigo-600 text-sm">Generating explanation...</div>
                   ) : (
-                    <p className="text-sm text-gray-600">{explanation}</p>
+                    <div className="text-sm text-gray-700 leading-relaxed space-y-2">
+                      <ReactMarkdown 
+                        components={{
+                          strong: ({node, ...props}) => <strong className="font-bold text-gray-900" {...props} />,
+                          ul: ({node, ...props}) => <ul className="list-disc pl-5 mt-2 space-y-1" {...props} />,
+                          ol: ({node, ...props}) => <ol className="list-decimal pl-5 mt-2 space-y-1" {...props} />,
+                          p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />
+                        }}
+                      >
+                        {explanation}
+                      </ReactMarkdown>
+                    </div>
                   )}
                 </div>
               )}
