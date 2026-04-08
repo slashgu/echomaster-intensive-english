@@ -361,27 +361,37 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
                 </button>
               </div>
 
-              <div className="text-xl sm:text-2xl leading-loose font-medium text-gray-800 p-6 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="text-xl sm:text-2xl leading-[2.5] font-medium text-gray-800 p-6 bg-gray-50 rounded-xl border border-gray-200">
                 {sentencePieces.map((piece, index) => {
+                  const isWord = /^\w+$/.test(piece);
+                  if (!isWord) {
+                    return <span key={index}>{piece}</span>;
+                  }
+
                   if (gaps.includes(index)) {
-                    const isCorrect = (gapValues[index] || '').trim().toLowerCase() === piece.toLowerCase();
+                    const val = gapValues[index] || '';
+                    const isCorrect = val.trim().toLowerCase() === piece.toLowerCase();
                     return (
                       <input
                         key={index}
                         type="text"
-                        value={gapValues[index] || ''}
+                        value={val}
                         onChange={(e) => setGapValues({ ...gapValues, [index]: e.target.value })}
                         className={clsx(
-                          "mx-1 px-2 py-1 text-center border-b-2 bg-transparent focus:outline-none transition-colors",
+                          "px-3 py-1 text-center border-2 rounded-full focus:outline-none focus:border-indigo-500 transition-all shadow-sm",
                           isCorrect 
-                            ? "border-green-500 text-green-700 bg-green-50" 
-                            : "border-indigo-400 focus:border-indigo-600 focus:bg-white"
+                            ? "bg-green-100 border-green-400 text-green-700 font-medium" 
+                            : "bg-white border-indigo-200 text-indigo-700"
                         )}
-                        style={{ width: `${Math.max(3, piece.length)}ch` }}
+                        style={{ width: `calc(${Math.max(2, val.length)}ch + 32px)` }}
                       />
                     );
                   }
-                  return <span key={index}>{piece}</span>;
+                  return (
+                    <span key={index} className="px-3 py-1 bg-white border border-gray-200 text-gray-700 rounded-full shadow-sm">
+                      {piece}
+                    </span>
+                  );
                 })}
               </div>
 
