@@ -1,10 +1,17 @@
 import { firebaseAuthService, firebaseDbService } from './firebaseService';
+import { apiAuthService } from './apiAuthService';
+import { apiDbService } from './apiDbService';
 import { geminiLLMService } from './geminiService';
 
-// Export the active implementations. 
-// To switch to a Chinese provider later (e.g., WeChat Auth, Tencent Cloud, DeepSeek LLM), 
-// you would just change these exports to point to your new service implementations.
+// When VITE_USE_API_BACKEND is 'true', all Firebase calls go through
+// Vercel serverless functions (/api/auth/*, /api/db/*) instead of the
+// client-side Firebase SDK. This allows the app to work behind the
+// Great Firewall since the browser never contacts Google domains directly.
+//
+// The Gemini LLM service already goes through /api/gemini/* regardless.
 
-export const authService = firebaseAuthService;
-export const dbService = firebaseDbService;
+const USE_API = (import.meta as any).env?.VITE_USE_API_BACKEND === 'true';
+
+export const authService = USE_API ? apiAuthService : firebaseAuthService;
+export const dbService = USE_API ? apiDbService : firebaseDbService;
 export const llmService = geminiLLMService;
