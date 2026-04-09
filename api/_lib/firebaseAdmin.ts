@@ -37,8 +37,9 @@ export function getAdminDb(): admin.firestore.Firestore {
   const databaseId = process.env.FIREBASE_DATABASE_ID || '(default)';
   // For named databases, use the initializeFirestore method
   if (databaseId !== '(default)') {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
     return new admin.firestore.Firestore({
-      projectId: admin.app().options.projectId as string,
+      projectId: serviceAccount.project_id,
       databaseId,
     });
   }
