@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyAuth } from '../_lib/authMiddleware';
-import { getAdminDb } from '../_lib/firebaseAdmin';
+import { verifyAuth } from '../_lib/authMiddleware.js';
+import { getAdminDb } from '../_lib/firebaseAdmin.js';
 
 /**
  * /api/db/sentences

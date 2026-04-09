@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getFirebaseApiKey, getAdminDb } from '../_lib/firebaseAdmin';
+import { getFirebaseApiKey, getAdminDb } from '../_lib/firebaseAdmin.js';
 
 /**
  * POST /api/auth/login

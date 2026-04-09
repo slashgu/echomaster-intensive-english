@@ -1,4 +1,4 @@
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
 
 // Initialize Firebase Admin SDK
 // Uses FIREBASE_SERVICE_ACCOUNT env var (JSON string of the service account key)
