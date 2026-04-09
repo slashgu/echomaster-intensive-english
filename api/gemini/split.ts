@@ -1,6 +1,39 @@
-import { GoogleGenAI, Type } from "@google/genai";
+/**
+ * POST /api/gemini/split
+ * Body: { text }
+ * Returns: { sentences: string[] }
+ *
+ * Splits text into short clauses/phrases by punctuation (periods, exclamation
+ * marks, question marks, commas, semicolons, colons, dashes).
+ * 
+ * Pure regex — no Gemini API call, zero token usage.
+ */
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+function splitTextIntoSegments(text: string): string[] {
+  // Split on sentence-ending punctuation (.!?) and clause-separating punctuation (,;:—–)
+  // Uses lookbehind to keep the punctuation attached to the preceding segment.
+  const segments = text
+    .split(/(?<=[.!?]+)\s+|(?<=,)\s+|(?<=[;:])\s+|(?<=\s[—–])\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+
+  // If any segment is still very long (>80 chars), try splitting further at commas or natural breaks
+  const result: string[] = [];
+  for (const segment of segments) {
+    if (segment.length > 80) {
+      // Try splitting at commas, semicolons, or " and ", " but ", " or ", " so ", " yet "
+      const subSegments = segment
+        .split(/(?<=,)\s+|(?<=[;:])\s+|\s+(?=(?:and|but|or|so|yet|because|although|while|when|if)\s)/i)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+      result.push(...subSegments);
+    } else {
+      result.push(segment);
+    }
+  }
+
+  return result.length > 0 ? result : [text];
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -12,27 +45,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Text is required' });
   }
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Split the following text into short clauses/phrases. Break the text by punctuation marks including periods, exclamation marks, question marks, AND commas, so that no single segment is too long. Return ONLY a JSON array of strings, where each string is a segment. Do not include any markdown formatting or other text.\n\nText:\n${text}`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.STRING
-          }
-        }
-      }
-    });
-    
-    if (!response.text) return res.status(200).json({ sentences: [text] });
-    
-    const sentences = JSON.parse(response.text);
-    return res.status(200).json({ sentences: Array.isArray(sentences) ? sentences : [text] });
-  } catch (error) {
-    console.error("Error splitting sentences via API:", error);
-    return res.status(200).json({ sentences: text.split(/(?<=[.!?]+|,)\s*/).filter(Boolean) || [text] });
-  }
+  const sentences = splitTextIntoSegments(text);
+  return res.status(200).json({ sentences });
 }
