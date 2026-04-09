@@ -41,6 +41,10 @@ export function getAdminDb(): admin.firestore.Firestore {
     return new admin.firestore.Firestore({
       projectId: serviceAccount.project_id,
       databaseId,
+      credentials: {
+        client_email: serviceAccount.client_email,
+        private_key: serviceAccount.private_key,
+      }
     });
   }
   return admin.firestore();
