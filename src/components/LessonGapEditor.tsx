@@ -16,14 +16,18 @@ export function LessonGapEditor({ lesson, onBack }: LessonGapEditorProps) {
   const [localGaps, setLocalGaps] = useState<Record<string, number[]>>({});
 
   useEffect(() => {
+    let isFirstLoad = true;
     const unsubscribe = dbService.subscribeToSentences(lesson.id, (data) => {
       setSentences(data);
-      // Initialize local gaps state
-      const initialGaps: Record<string, number[]> = {};
-      data.forEach(s => {
-        initialGaps[s.id] = s.gapIndexes || [];
-      });
-      setLocalGaps(initialGaps);
+      // Only initialize local gaps on first load to avoid overwriting unsaved user selections
+      if (isFirstLoad) {
+        const initialGaps: Record<string, number[]> = {};
+        data.forEach(s => {
+          initialGaps[s.id] = s.gapIndexes || [];
+        });
+        setLocalGaps(initialGaps);
+        isFirstLoad = false;
+      }
       setLoading(false);
     }, (error) => {
       console.error(error);
