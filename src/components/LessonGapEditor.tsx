@@ -16,19 +16,17 @@ export function LessonGapEditor({ lesson, onBack }: LessonGapEditorProps) {
   const [localGaps, setLocalGaps] = useState<Record<string, number[]>>({});
 
   useEffect(() => {
-    let isFirstLoad = true;
+    // One-time fetch only — no need to poll for gap editor
     const unsubscribe = dbService.subscribeToSentences(lesson.id, (data) => {
       setSentences(data);
-      // Only initialize local gaps on first load to avoid overwriting unsaved user selections
-      if (isFirstLoad) {
-        const initialGaps: Record<string, number[]> = {};
-        data.forEach(s => {
-          initialGaps[s.id] = s.gapIndexes || [];
-        });
-        setLocalGaps(initialGaps);
-        isFirstLoad = false;
-      }
+      const initialGaps: Record<string, number[]> = {};
+      data.forEach(s => {
+        initialGaps[s.id] = s.gapIndexes || [];
+      });
+      setLocalGaps(initialGaps);
       setLoading(false);
+      // Immediately stop polling — we only need the initial data
+      unsubscribe();
     }, (error) => {
       console.error(error);
       setLoading(false);

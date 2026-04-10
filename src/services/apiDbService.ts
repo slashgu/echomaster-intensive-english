@@ -8,7 +8,7 @@ import { apiFetch } from './apiAuthService';
  * Real-time onSnapshot subscriptions are replaced with polling.
  */
 
-const POLL_INTERVAL = 5000; // 5 seconds
+const POLL_INTERVAL = 30000; // 30 seconds — reduced from 5s to conserve Firestore free-tier read quota
 
 export const apiDbService: IDatabaseService = {
   async ensureUserExists(user: User): Promise<User> {

@@ -41,15 +41,13 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   const sentencesRef = useRef<Sentence[]>([]);
 
   useEffect(() => {
-    let isFirstLoad = true;
+    // One-time fetch only — sentences don't change during a practice session
     const unsubscribe = dbService.subscribeToSentences(lessonId, (data) => {
-      // Only set sentences on first load to prevent polling from resetting gap-fill state
-      if (isFirstLoad) {
-        setSentences(data);
-        sentencesRef.current = data;
-        isFirstLoad = false;
-      }
+      setSentences(data);
+      sentencesRef.current = data;
       setLoading(false);
+      // Immediately stop polling to conserve Firestore read quota
+      unsubscribe();
     }, (error) => {
       console.error(error);
       setLoading(false);
