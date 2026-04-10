@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService, llmService, authService } from '../services';
 import { Sentence, ProgressAnswer } from '../services/types';
-import { ArrowLeft, Play, Pause, Repeat, FastForward, Rewind, HelpCircle, Mic, CheckCircle2, Save } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Repeat, FastForward, Rewind, HelpCircle, Mic, CheckCircle2, Save, Edit3 } from 'lucide-react';
 import clsx from 'clsx';
 import ReactMarkdown from 'react-markdown';
 
@@ -78,13 +78,7 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
         }
       });
       
-      let selectedGaps = sentence.gapIndexes || [];
-      if (selectedGaps.length === 0) {
-        // Fallback to random 30% if teacher hasn't configured gaps
-        const gapCount = Math.max(1, Math.floor(wordIndexes.length * 0.3));
-        const shuffled = [...wordIndexes].sort(() => 0.5 - Math.random());
-        selectedGaps = shuffled.slice(0, gapCount).sort((a,b) => a-b);
-      }
+      const selectedGaps = sentence.gapIndexes || [];
       
       setGaps(selectedGaps);
       setGapValues({});
@@ -416,39 +410,47 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
                 </button>
               </div>
 
-              <div className="text-xl sm:text-2xl leading-[2.5] font-medium text-gray-800 p-6 bg-gray-50 rounded-xl border border-gray-200">
-                {sentencePieces.map((piece, index) => {
-                  const isWord = /^\w+$/.test(piece);
-                  if (!isWord) {
-                    return <span key={index}>{piece}</span>;
-                  }
+              {gaps.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-xl border border-gray-200">
+                  <Edit3 className="mx-auto h-10 w-10 text-gray-300 mb-3" />
+                  <p className="text-gray-500 font-medium">No gaps configured for this sentence yet.</p>
+                  <p className="text-sm text-gray-400 mt-1">Your teacher needs to configure the gap words for this lesson.</p>
+                </div>
+              ) : (
+                <div className="text-xl sm:text-2xl leading-[2.5] font-medium text-gray-800 p-6 bg-gray-50 rounded-xl border border-gray-200">
+                  {sentencePieces.map((piece, index) => {
+                    const isWord = /^\w+$/.test(piece);
+                    if (!isWord) {
+                      return <span key={index}>{piece}</span>;
+                    }
 
-                  if (gaps.includes(index)) {
-                    const val = gapValues[index] || '';
-                    const isCorrect = val.trim().toLowerCase() === piece.toLowerCase();
+                    if (gaps.includes(index)) {
+                      const val = gapValues[index] || '';
+                      const isCorrect = val.trim().toLowerCase() === piece.toLowerCase();
+                      return (
+                        <input
+                          key={index}
+                          type="text"
+                          value={val}
+                          onChange={(e) => setGapValues({ ...gapValues, [index]: e.target.value })}
+                          className={clsx(
+                            "m-0 inline-block align-middle px-3 py-1 text-center border-2 rounded-full focus:outline-none focus:border-indigo-500 transition-all shadow-sm leading-normal",
+                            isCorrect 
+                              ? "bg-green-100 border-green-400 text-green-700 font-medium" 
+                              : "bg-white border-indigo-200 text-indigo-700"
+                          )}
+                          style={{ width: `calc(${Math.max(2, val.length)}ch + 32px)` }}
+                        />
+                      );
+                    }
                     return (
-                      <input
-                        key={index}
-                        type="text"
-                        value={val}
-                        onChange={(e) => setGapValues({ ...gapValues, [index]: e.target.value })}
-                        className={clsx(
-                          "m-0 inline-block align-middle px-3 py-1 text-center border-2 rounded-full focus:outline-none focus:border-indigo-500 transition-all shadow-sm leading-normal",
-                          isCorrect 
-                            ? "bg-green-100 border-green-400 text-green-700 font-medium" 
-                            : "bg-white border-indigo-200 text-indigo-700"
-                        )}
-                        style={{ width: `calc(${Math.max(2, val.length)}ch + 32px)` }}
-                      />
+                      <span key={index} className="m-0 inline-block align-middle px-3 py-1 bg-white border-2 border-gray-200 text-gray-700 rounded-full shadow-sm leading-normal">
+                        {piece}
+                      </span>
                     );
-                  }
-                  return (
-                    <span key={index} className="m-0 inline-block align-middle px-3 py-1 bg-white border-2 border-gray-200 text-gray-700 rounded-full shadow-sm leading-normal">
-                      {piece}
-                    </span>
-                  );
-                })}
-              </div>
+                  })}
+                </div>
+              )}
 
               {allGapsCorrect && gaps.length > 0 && (
                 <div className="flex items-center text-green-600 gap-2 font-medium justify-center mt-4 bg-green-50 p-4 rounded-lg border border-green-200">

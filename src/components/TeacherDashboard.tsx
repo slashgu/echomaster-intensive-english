@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { authService, dbService } from '../services';
 import { Lesson, User, Progress } from '../services/types';
-import { Plus, BookOpen, Users, LogOut, Activity, ChevronRight, ArrowLeft, Trash2, Edit3 } from 'lucide-react';
+import { Plus, BookOpen, Users, LogOut, Activity, ChevronRight, ArrowLeft, Trash2, Edit3, AlertTriangle } from 'lucide-react';
 import { LessonCreator } from './LessonCreator';
 import { LessonGapEditor } from './LessonGapEditor';
 import clsx from 'clsx';
@@ -60,7 +60,11 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
   if (showCreator) {
     return <LessonCreator onBack={() => setShowCreator(false)} onCreated={(id) => {
       setShowCreator(false);
-      onSelectLesson(id);
+      // After creation, open the gap editor so the teacher configures gaps right away
+      const newLesson = lessons.find(l => l.id === id);
+      if (newLesson) {
+        setEditingGapsLesson(newLesson);
+      }
     }} />;
   }
 
@@ -136,6 +140,14 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
               </button>
             </div>
 
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">Don't forget to configure gaps!</p>
+                <p className="text-xs text-amber-600 mt-0.5">Click the <Edit3 className="inline h-3.5 w-3.5" /> edit icon on a lesson to set up gap-fill words for your students.</p>
+              </div>
+            </div>
+
             {loading ? (
               <div className="text-center py-12 text-gray-500">Loading lessons...</div>
             ) : lessons.length === 0 ? (
@@ -189,6 +201,16 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
                         <Activity className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
                         {lesson.sentenceCount} sentences
                       </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingGapsLesson(lesson);
+                        }}
+                        className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                        Configure Gaps
+                      </button>
                     </div>
                   </div>
                 ))}
