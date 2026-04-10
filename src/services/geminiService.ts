@@ -1,24 +1,30 @@
 import { ILLMService } from './types';
+import nlp from 'compromise';
 
 export const geminiLLMService: ILLMService = {
   async splitIntoSentences(text: string): Promise<string[]> {
-    // Pure regex — no API call, no Gemini tokens, instant.
-    const segments = text
-      .split(/(?<=[.!?]+)\s+|(?<=,)\s+|(?<=[;:])\s+|(?<=\s[—–])\s+/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
+    // Use Compromise NLP for smart sentence boundary detection.
+    // Handles abbreviations (Mr., Dr., e.g.), quoted speech, etc.
+    const doc = nlp(text);
+    const sentences = doc.sentences().out('array') as string[];
 
-    // If any segment is still very long (>80 chars), split further at natural breaks
+    // If any sentence is still very long (>120 chars), split at natural clause boundaries
     const result: string[] = [];
-    for (const segment of segments) {
-      if (segment.length > 80) {
-        const subSegments = segment
-          .split(/(?<=,)\s+|(?<=[;:])\s+|\s+(?=(?:and|but|or|so|yet|because|although|while|when|if)\s)/i)
+    for (const sentence of sentences) {
+      if (sentence.length > 120) {
+        // Split at semicolons, colons, or before conjunctions — but keep fragments together
+        const subSegments = sentence
+          .split(/(?<=[;:])\s+|\s+(?=(?:and|but|or|so|yet|because|although|while|when|if)\s)/i)
           .map(s => s.trim())
           .filter(s => s.length > 0);
-        result.push(...subSegments);
+        // Only use sub-splits if they produce reasonably sized chunks (>15 chars each)
+        if (subSegments.length > 1 && subSegments.every(s => s.length > 15)) {
+          result.push(...subSegments);
+        } else {
+          result.push(sentence);
+        }
       } else {
-        result.push(segment);
+        result.push(sentence);
       }
     }
 
