@@ -38,9 +38,17 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  const sentencesRef = useRef<Sentence[]>([]);
+
   useEffect(() => {
+    let isFirstLoad = true;
     const unsubscribe = dbService.subscribeToSentences(lessonId, (data) => {
-      setSentences(data);
+      // Only set sentences on first load to prevent polling from resetting gap-fill state
+      if (isFirstLoad) {
+        setSentences(data);
+        sentencesRef.current = data;
+        isFirstLoad = false;
+      }
       setLoading(false);
     }, (error) => {
       console.error(error);
@@ -56,8 +64,9 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   }, [playbackRate, currentIndex]);
 
   useEffect(() => {
-    if (mode === 'gap-fill' && sentences[currentIndex]) {
-      const sentence = sentences[currentIndex];
+    const currentSentences = sentencesRef.current;
+    if (mode === 'gap-fill' && currentSentences[currentIndex]) {
+      const sentence = currentSentences[currentIndex];
       // Split by words, preserving punctuation and spaces
       const pieces = sentence.text.split(/(\b\w+\b)/);
       setSentencePieces(pieces);
@@ -80,7 +89,7 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
       setGaps(selectedGaps);
       setGapValues({});
     }
-  }, [currentIndex, mode, sentences]);
+  }, [currentIndex, mode]);
 
   useEffect(() => {
     // Sync UI states when changing sentences or toggling explanation
