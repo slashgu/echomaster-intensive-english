@@ -1,4 +1,5 @@
 import { IAuthService, User } from './types';
+import { cacheClear } from './cache';
 
 /**
  * API-based auth service that calls Vercel serverless functions instead of
@@ -198,6 +199,7 @@ export const apiAuthService: IAuthService = {
     } finally {
       clearTokens();
       storeUser(null);
+      cacheClear();
       notifyListeners(null);
     }
   },
