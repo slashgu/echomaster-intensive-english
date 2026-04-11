@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { authService, dbService } from '../services';
-import { Lesson, User, Progress } from '../services/types';
-import { Plus, BookOpen, Users, LogOut, Activity, ChevronRight, ArrowLeft, Trash2, Edit3, AlertTriangle } from 'lucide-react';
+import { Lesson, User, Progress, Sentence } from '../services/types';
+import { Plus, BookOpen, Users, LogOut, Activity, ChevronRight, ArrowLeft, Trash2, Edit3, AlertTriangle, X } from 'lucide-react';
 import { LessonCreator } from './LessonCreator';
 import { LessonGapEditor } from './LessonGapEditor';
 import clsx from 'clsx';
@@ -21,11 +21,27 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [studentProgress, setStudentProgress] = useState<Progress[]>([]);
   const [expandedProgressId, setExpandedProgressId] = useState<string | null>(null);
+  const [pendingGapLessonId, setPendingGapLessonId] = useState<string | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [lessonsWithGaps, setLessonsWithGaps] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const unsubscribeLessons = dbService.subscribeToLessons(user.uid, (lessonsData) => {
       setLessons(lessonsData);
       setLoading(false);
+
+      // Check each lesson for gap configuration status
+      lessonsData.forEach((lesson) => {
+        const unsub = dbService.subscribeToSentences(lesson.id, (sentences) => {
+          const hasGaps = sentences.length > 0 && sentences.some(s => s.gapIndexes && s.gapIndexes.length > 0);
+          setLessonsWithGaps(prev => {
+            const next = new Set(prev);
+            if (hasGaps) next.add(lesson.id); else next.delete(lesson.id);
+            return next;
+          });
+          unsub(); // one-shot check
+        }, () => { /* ignore errors */ });
+      });
     }, (error) => {
       console.error(error);
       setLoading(false);
@@ -53,6 +69,32 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
     return () => unsubscribe();
   }, [selectedStudent]);
 
+  // When a lesson is created and we're waiting for it to appear in the lessons list,
+  // this effect opens the gap editor as soon as it shows up.
+  useEffect(() => {
+    if (!pendingGapLessonId) return;
+    const newLesson = lessons.find(l => l.id === pendingGapLessonId);
+    if (newLesson) {
+      setPendingGapLessonId(null);
+      setEditingGapsLesson(newLesson);
+    }
+  }, [lessons, pendingGapLessonId]);
+
+  const refreshGapStatus = useCallback((lessonId: string) => {
+    const unsub = dbService.subscribeToSentences(lessonId, (sentences) => {
+      const hasGaps = sentences.length > 0 && sentences.some(s => s.gapIndexes && s.gapIndexes.length > 0);
+      setLessonsWithGaps(prev => {
+        const next = new Set(prev);
+        if (hasGaps) next.add(lessonId); else next.delete(lessonId);
+        return next;
+      });
+      unsub();
+    }, () => { /* ignore */ });
+  }, []);
+
+  const allLessonsConfigured = lessons.length > 0 && lessons.every(l => lessonsWithGaps.has(l.id));
+  const showBanner = !bannerDismissed && !allLessonsConfigured && lessons.length > 0;
+
   const handleLogout = async () => {
     await authService.logout();
   };
@@ -60,16 +102,17 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
   if (showCreator) {
     return <LessonCreator onBack={() => setShowCreator(false)} onCreated={(id) => {
       setShowCreator(false);
-      // After creation, open the gap editor so the teacher configures gaps right away
-      const newLesson = lessons.find(l => l.id === id);
-      if (newLesson) {
-        setEditingGapsLesson(newLesson);
-      }
+      // Store the pending ID — the effect above will open the gap editor
+      // once the lesson appears in state via the Firestore subscription.
+      setPendingGapLessonId(id);
     }} />;
   }
 
   if (editingGapsLesson) {
-    return <LessonGapEditor lesson={editingGapsLesson} onBack={() => setEditingGapsLesson(null)} />;
+    return <LessonGapEditor lesson={editingGapsLesson} onBack={() => {
+      refreshGapStatus(editingGapsLesson.id);
+      setEditingGapsLesson(null);
+    }} />;
   }
 
   return (
@@ -140,13 +183,22 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
               </button>
             </div>
 
-            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-amber-800">Don't forget to configure gaps!</p>
-                <p className="text-xs text-amber-600 mt-0.5">Click the <Edit3 className="inline h-3.5 w-3.5" /> edit icon on a lesson to set up gap-fill words for your students.</p>
+            {showBanner && (
+              <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-800">Don't forget to configure gaps!</p>
+                  <p className="text-xs text-amber-600 mt-0.5">Click the <Edit3 className="inline h-3.5 w-3.5" /> edit icon on a lesson to set up gap-fill words for your students.</p>
+                </div>
+                <button
+                  onClick={() => setBannerDismissed(true)}
+                  className="text-amber-400 hover:text-amber-600 flex-shrink-0 p-0.5 rounded hover:bg-amber-100 transition-colors"
+                  title="Dismiss"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-            </div>
+            )}
 
             {loading ? (
               <div className="text-center py-12 text-gray-500">Loading lessons...</div>
