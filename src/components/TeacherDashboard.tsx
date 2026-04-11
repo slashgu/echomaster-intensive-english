@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { authService, dbService } from '../services';
 import { Lesson, User, Progress, Sentence } from '../services/types';
+import { cacheInvalidateByPrefix } from '../services/cache';
 import { Plus, BookOpen, Users, LogOut, Activity, ChevronRight, ArrowLeft, Trash2, Edit3, AlertTriangle, X } from 'lucide-react';
 import { LessonCreator } from './LessonCreator';
 import { LessonGapEditor } from './LessonGapEditor';
@@ -21,7 +22,6 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [studentProgress, setStudentProgress] = useState<Progress[]>([]);
   const [expandedProgressId, setExpandedProgressId] = useState<string | null>(null);
-  const [pendingGapLessonId, setPendingGapLessonId] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [lessonsWithGaps, setLessonsWithGaps] = useState<Set<string>>(new Set());
 
@@ -69,16 +69,7 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
     return () => unsubscribe();
   }, [selectedStudent]);
 
-  // When a lesson is created and we're waiting for it to appear in the lessons list,
-  // this effect opens the gap editor as soon as it shows up.
-  useEffect(() => {
-    if (!pendingGapLessonId) return;
-    const newLesson = lessons.find(l => l.id === pendingGapLessonId);
-    if (newLesson) {
-      setPendingGapLessonId(null);
-      setEditingGapsLesson(newLesson);
-    }
-  }, [lessons, pendingGapLessonId]);
+
 
   const refreshGapStatus = useCallback((lessonId: string) => {
     const unsub = dbService.subscribeToSentences(lessonId, (sentences) => {
@@ -100,11 +91,18 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
   };
 
   if (showCreator) {
-    return <LessonCreator onBack={() => setShowCreator(false)} onCreated={(id) => {
+    return <LessonCreator onBack={() => setShowCreator(false)} onCreated={(id, title) => {
       setShowCreator(false);
-      // Store the pending ID — the effect above will open the gap editor
-      // once the lesson appears in state via the Firestore subscription.
-      setPendingGapLessonId(id);
+      // Invalidate cache so dashboard shows the new lesson when we return
+      cacheInvalidateByPrefix('lessons:');
+      // Open gap editor immediately with a constructed Lesson object
+      setEditingGapsLesson({
+        id,
+        title,
+        authorId: user.uid,
+        createdAt: new Date(),
+        sentenceCount: 0, // not needed by gap editor
+      });
     }} />;
   }
 

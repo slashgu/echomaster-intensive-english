@@ -4,7 +4,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 
 interface LessonCreatorProps {
   onBack: () => void;
-  onCreated: (lessonId: string) => void;
+  onCreated: (lessonId: string, title: string) => void;
 }
 
 export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
@@ -62,7 +62,7 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
         });
       }
 
-      onCreated(lessonId);
+      onCreated(lessonId, title.trim());
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An error occurred during creation.');
