@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { authService, dbService } from '../services';
 import { Lesson, User, Progress, Sentence } from '../services/types';
-import { cacheInvalidateByPrefix } from '../services/cache';
+
 import { Plus, BookOpen, Users, LogOut, Activity, ChevronRight, ArrowLeft, Trash2, Edit3, AlertTriangle, X } from 'lucide-react';
 import { LessonCreator } from './LessonCreator';
 import { LessonGapEditor } from './LessonGapEditor';
@@ -93,8 +93,7 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
   if (showCreator) {
     return <LessonCreator onBack={() => setShowCreator(false)} onCreated={(id, title) => {
       setShowCreator(false);
-      // Invalidate cache so dashboard shows the new lesson when we return
-      cacheInvalidateByPrefix('lessons:');
+
       // Open gap editor immediately with a constructed Lesson object
       setEditingGapsLesson({
         id,

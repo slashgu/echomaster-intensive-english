@@ -1,6 +1,6 @@
 import { IDatabaseService, User, Lesson, Sentence, Progress } from './types';
 import { apiFetch } from './apiAuthService';
-import { cacheGet, cacheSet, cacheInvalidate, cacheInvalidateByPrefix } from './cache';
+import { cacheGet, cacheSet, cacheInvalidate, cacheInvalidateByPrefix, onCacheInvalidate } from './cache';
 
 /**
  * API-based database service that calls Vercel serverless functions instead of
@@ -97,9 +97,15 @@ export const apiDbService: IDatabaseService = {
       if (!cancelled) fetchLessons();
     }, POLL_INTERVAL);
 
+    // Immediately re-fetch when a mutation invalidates this cache key
+    const unsubInvalidate = onCacheInvalidate(cacheKey, () => {
+      if (!cancelled) fetchLessons();
+    });
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      unsubInvalidate();
     };
   },
 
@@ -170,9 +176,15 @@ export const apiDbService: IDatabaseService = {
       if (!cancelled) fetchSentences();
     }, POLL_INTERVAL);
 
+    // Immediately re-fetch when a mutation invalidates this cache key
+    const unsubInvalidate = onCacheInvalidate(cacheKey, () => {
+      if (!cancelled) fetchSentences();
+    });
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      unsubInvalidate();
     };
   },
 
@@ -242,9 +254,15 @@ export const apiDbService: IDatabaseService = {
       if (!cancelled) fetchStudents();
     }, POLL_INTERVAL);
 
+    // Immediately re-fetch when a mutation invalidates this cache key
+    const unsubInvalidate = onCacheInvalidate(cacheKey, () => {
+      if (!cancelled) fetchStudents();
+    });
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      unsubInvalidate();
     };
   },
 
@@ -284,9 +302,15 @@ export const apiDbService: IDatabaseService = {
       if (!cancelled) fetchProgress();
     }, POLL_INTERVAL);
 
+    // Immediately re-fetch when a mutation invalidates this cache key
+    const unsubInvalidate = onCacheInvalidate(cacheKey, () => {
+      if (!cancelled) fetchProgress();
+    });
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      unsubInvalidate();
     };
   },
 
