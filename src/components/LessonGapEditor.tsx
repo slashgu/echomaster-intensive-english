@@ -48,11 +48,13 @@ export function LessonGapEditor({ lesson, onBack }: LessonGapEditorProps) {
   const handleSaveAll = async () => {
     setSaving(true);
     try {
-      for (const sentence of sentences) {
-        const configuredGaps = localGaps[sentence.id] || [];
-        // Only update if changed visually
-        await dbService.updateSentenceGaps(lesson.id, sentence.id, configuredGaps);
-      }
+      const updates = sentences.map(sentence => ({
+        sentenceId: sentence.id,
+        gapIndexes: localGaps[sentence.id] || []
+      }));
+
+      await dbService.updateSentenceGapsBatch(lesson.id, updates);
+      
       alert('Gap configurations saved successfully!');
       onBack();
     } catch (error) {

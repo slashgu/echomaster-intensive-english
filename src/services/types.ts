@@ -14,6 +14,7 @@ export interface Lesson {
   authorId: string;
   createdAt: any;
   sentenceCount: number;
+  isConfigured?: boolean;
 }
 
 export interface Sentence {
@@ -57,6 +58,7 @@ export interface IDatabaseService {
   subscribeToSentences(lessonId: string, callback: (sentences: Sentence[]) => void, onError: (error: Error) => void): () => void;
   addSentenceToLesson(lessonId: string, sentence: Omit<Sentence, 'id'>): Promise<void>;
   updateSentenceGaps(lessonId: string, sentenceId: string, gapIndexes: number[]): Promise<void>;
+  updateSentenceGapsBatch(lessonId: string, updates: { sentenceId: string, gapIndexes: number[] }[]): Promise<void>;
   
   // New methods for Teacher/Student roles
   subscribeToStudents(teacherId: string, callback: (students: User[]) => void, onError: (error: Error) => void): () => void;

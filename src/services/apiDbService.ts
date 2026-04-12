@@ -21,7 +21,25 @@ import { cacheGet, cacheSet, cacheInvalidate, cacheInvalidateByPrefix, onCacheIn
  *   progress:<userId>         → progress list for a user
  */
 
-const POLL_INTERVAL = 60_000; // 60 seconds — extended from 30s because cache handles freshness
+const POLL_INTERVAL = 180_000; // 180 seconds (3 minutes) — drastically reduced to save quota
+const pendingRequests = new Map<string, Promise<any>>();
+
+/**
+ * Deduplicates in-flight API requests. If a request for the same URL is
+ * already pending, returns the existing promise instead of firing a new one.
+ */
+async function deduplicatedFetch(url: string, options?: RequestInit) {
+  if (pendingRequests.has(url)) {
+    return pendingRequests.get(url);
+  }
+
+  const promise = apiFetch(url, options).finally(() => {
+    pendingRequests.delete(url);
+  });
+
+  pendingRequests.set(url, promise);
+  return promise;
+}
 
 // ── Cache key helpers ────────────────────────────────────────────────
 
@@ -71,7 +89,7 @@ export const apiDbService: IDatabaseService = {
           return;
         }
 
-        const response = await apiFetch(`/api/db/lessons?authorId=${encodeURIComponent(authorId)}`);
+        const response = await deduplicatedFetch(`/api/db/lessons?authorId=${encodeURIComponent(authorId)}`);
         if (cancelled) return;
 
         const data = await response.json();
@@ -153,7 +171,7 @@ export const apiDbService: IDatabaseService = {
           return;
         }
 
-        const response = await apiFetch(`/api/db/sentences?lessonId=${encodeURIComponent(lessonId)}`);
+        const response = await deduplicatedFetch(`/api/db/sentences?lessonId=${encodeURIComponent(lessonId)}`);
         if (cancelled) return;
 
         const data = await response.json();
@@ -214,8 +232,25 @@ export const apiDbService: IDatabaseService = {
       throw new Error(data.error || 'Failed to update gaps.');
     }
 
-    // Invalidate sentence cache for this lesson
+    // Invalidate caches
     cacheInvalidate(CACHE_KEY.sentences(lessonId));
+    cacheInvalidateByPrefix('lessons:');
+  },
+
+  async updateSentenceGapsBatch(lessonId: string, updates: { sentenceId: string, gapIndexes: number[] }[]): Promise<void> {
+    const response = await apiFetch('/api/db/sentences', {
+      method: 'PATCH',
+      body: JSON.stringify({ lessonId, updates, isBatch: true }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to update gaps (batch).');
+    }
+
+    // Invalidate caches
+    cacheInvalidate(CACHE_KEY.sentences(lessonId));
+    cacheInvalidateByPrefix('lessons:');
   },
 
   subscribeToStudents(teacherId: string, callback: (students: User[]) => void, onError: (error: Error) => void): () => void {
@@ -231,7 +266,7 @@ export const apiDbService: IDatabaseService = {
           return;
         }
 
-        const response = await apiFetch(`/api/db/students?teacherId=${encodeURIComponent(teacherId)}`);
+        const response = await deduplicatedFetch(`/api/db/students?teacherId=${encodeURIComponent(teacherId)}`);
         if (cancelled) return;
 
         const data = await response.json();
@@ -279,7 +314,7 @@ export const apiDbService: IDatabaseService = {
           return;
         }
 
-        const response = await apiFetch(`/api/db/progress?userId=${encodeURIComponent(userId)}`);
+        const response = await deduplicatedFetch(`/api/db/progress?userId=${encodeURIComponent(userId)}`);
         if (cancelled) return;
 
         const data = await response.json();

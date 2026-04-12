@@ -49,9 +49,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         authorId: authUser.uid,
         createdAt: FieldValue.serverTimestamp(),
         sentenceCount: sentenceCount || 0,
+        isConfigured: false,
       });
 
       return res.status(200).json({ id: lessonRef.id });
+    }
+
+    if (req.method === 'PATCH') {
+      const { id, title, isConfigured } = req.body || {};
+      if (!id) {
+        return res.status(400).json({ error: 'Lesson id is required.' });
+      }
+
+      const updateData: any = {};
+      if (title !== undefined) updateData.title = title;
+      if (isConfigured !== undefined) updateData.isConfigured = isConfigured;
+
+      await db.collection('lessons').doc(id).update(updateData);
+      return res.status(200).json({ message: 'Lesson updated.' });
     }
 
     if (req.method === 'DELETE') {

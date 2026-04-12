@@ -23,25 +23,13 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
   const [studentProgress, setStudentProgress] = useState<Progress[]>([]);
   const [expandedProgressId, setExpandedProgressId] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [lessonsWithGaps, setLessonsWithGaps] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const unsubscribeLessons = dbService.subscribeToLessons(user.uid, (lessonsData) => {
       setLessons(lessonsData);
       setLoading(false);
 
-      // Check each lesson for gap configuration status
-      lessonsData.forEach((lesson) => {
-        const unsub = dbService.subscribeToSentences(lesson.id, (sentences) => {
-          const hasGaps = sentences.length > 0 && sentences.some(s => s.gapIndexes && s.gapIndexes.length > 0);
-          setLessonsWithGaps(prev => {
-            const next = new Set(prev);
-            if (hasGaps) next.add(lesson.id); else next.delete(lesson.id);
-            return next;
-          });
-          unsub(); // one-shot check
-        }, () => { /* ignore errors */ });
-      });
+
     }, (error) => {
       console.error(error);
       setLoading(false);
@@ -71,19 +59,7 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
 
 
 
-  const refreshGapStatus = useCallback((lessonId: string) => {
-    const unsub = dbService.subscribeToSentences(lessonId, (sentences) => {
-      const hasGaps = sentences.length > 0 && sentences.some(s => s.gapIndexes && s.gapIndexes.length > 0);
-      setLessonsWithGaps(prev => {
-        const next = new Set(prev);
-        if (hasGaps) next.add(lessonId); else next.delete(lessonId);
-        return next;
-      });
-      unsub();
-    }, () => { /* ignore */ });
-  }, []);
-
-  const allLessonsConfigured = lessons.length > 0 && lessons.every(l => lessonsWithGaps.has(l.id));
+  const allLessonsConfigured = lessons.length > 0 && lessons.every(l => l.isConfigured);
   const showBanner = !bannerDismissed && !allLessonsConfigured && lessons.length > 0;
 
   const handleLogout = async () => {
@@ -107,7 +83,6 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
 
   if (editingGapsLesson) {
     return <LessonGapEditor lesson={editingGapsLesson} onBack={() => {
-      refreshGapStatus(editingGapsLesson.id);
       setEditingGapsLesson(null);
     }} />;
   }

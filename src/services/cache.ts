@@ -18,8 +18,8 @@ interface CacheEntry<T = any> {
 
 const store = new Map<string, CacheEntry>();
 
-/** Default time-to-live: 2 minutes */
-const DEFAULT_TTL_MS = 2 * 60 * 1000;
+/** Default time-to-live: 5 minutes */
+const DEFAULT_TTL_MS = 5 * 60 * 1000;
 
 // ── Invalidation listeners ──────────────────────────────────────────
 // Each listener is keyed by its cache key and called whenever that key

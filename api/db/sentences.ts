@@ -47,13 +47,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'PATCH') {
-      const { lessonId, sentenceId, gapIndexes } = req.body || {};
-      if (!lessonId || !sentenceId) {
-        return res.status(400).json({ error: 'lessonId and sentenceId are required.' });
+      const { lessonId, sentenceId, gapIndexes, updates, isBatch } = req.body || {};
+      
+      if (!lessonId) {
+        return res.status(400).json({ error: 'lessonId is required.' });
       }
 
-      await db.doc(`lessons/${lessonId}/sentences/${sentenceId}`).update({ gapIndexes });
-      return res.status(200).json({ message: 'Gaps updated.' });
+      const batch = db.batch();
+      let hasUpdates = false;
+
+      if (isBatch && Array.isArray(updates)) {
+        updates.forEach((update: any) => {
+          if (update.sentenceId && Array.isArray(update.gapIndexes)) {
+            const ref = db.doc(`lessons/${lessonId}/sentences/${update.sentenceId}`);
+            batch.update(ref, { gapIndexes: update.gapIndexes });
+            hasUpdates = true;
+          }
+        });
+      } else if (sentenceId) {
+        const ref = db.doc(`lessons/${lessonId}/sentences/${sentenceId}`);
+        batch.update(ref, { gapIndexes });
+        hasUpdates = true;
+      }
+
+      if (hasUpdates) {
+        // Also update the parent lesson's configured status
+        const lessonRef = db.doc(`lessons/${lessonId}`);
+        batch.update(lessonRef, { isConfigured: true });
+        
+        await batch.commit();
+        return res.status(200).json({ message: 'Gaps updated and lesson configured.' });
+      }
+
+      return res.status(400).json({ error: 'No valid updates provided.' });
     }
 
     return res.status(405).json({ error: 'Method Not Allowed' });

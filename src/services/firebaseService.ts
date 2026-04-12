@@ -137,7 +137,8 @@ export const firebaseDbService: IDatabaseService = {
       title,
       authorId,
       createdAt: serverTimestamp(),
-      sentenceCount
+      sentenceCount,
+      isConfigured: false
     });
     return lessonRef.id;
   },
@@ -162,8 +163,30 @@ export const firebaseDbService: IDatabaseService = {
     await setDoc(sentenceRef, sentence);
   },
   async updateSentenceGaps(lessonId, sentenceId, gapIndexes) {
+    const { writeBatch } = await import('firebase/firestore');
+    const batch = writeBatch(db);
+    
     const sentenceRef = doc(db, `lessons/${lessonId}/sentences`, sentenceId);
-    await updateDoc(sentenceRef, { gapIndexes });
+    batch.update(sentenceRef, { gapIndexes });
+    
+    const lessonRef = doc(db, 'lessons', lessonId);
+    batch.update(lessonRef, { isConfigured: true });
+    
+    await batch.commit();
+  },
+  async updateSentenceGapsBatch(lessonId, updates) {
+    const { writeBatch } = await import('firebase/firestore');
+    const batch = writeBatch(db);
+    
+    updates.forEach(update => {
+      const ref = doc(db, `lessons/${lessonId}/sentences`, update.sentenceId);
+      batch.update(ref, { gapIndexes: update.gapIndexes });
+    });
+    
+    const lessonRef = doc(db, 'lessons', lessonId);
+    batch.update(lessonRef, { isConfigured: true });
+    
+    await batch.commit();
   },
   subscribeToStudents(teacherId, callback, onError) {
     const q = query(collection(db, 'users'), where('role', '==', 'student'), where('teacherId', '==', teacherId));
