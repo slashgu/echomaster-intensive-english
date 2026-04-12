@@ -7,7 +7,7 @@ import admin from 'firebase-admin';
 let initialized = false;
 
 function ensureInitialized() {
-  if (initialized) return;
+  if (admin.apps.length > 0) return;
 
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!serviceAccountJson) {
@@ -23,8 +23,6 @@ function ensureInitialized() {
     credential: admin.credential.cert(serviceAccount),
     projectId: serviceAccount.project_id,
   });
-
-  initialized = true;
 }
 
 export function getAdminAuth(): admin.auth.Auth {

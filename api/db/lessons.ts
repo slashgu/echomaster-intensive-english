@@ -22,16 +22,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'authorId is required.' });
       }
 
+      console.log(`[API] Fetching lessons for authorId: ${authorId}`);
+
       const snapshot = await db
         .collection('lessons')
         .where('authorId', '==', authorId)
         .get();
 
-      const lessons = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || null,
-      })).sort((a, b) => {
+      console.log(`[API] Found ${snapshot.size} lessons in Firestore`);
+
+      const lessons = snapshot.docs.map(doc => {
+        try {
+          const data = doc.data();
+          
+          // Defensive timestamp handling
+          let createdAtISO = null;
+          if (data.createdAt) {
+            if (typeof data.createdAt.toDate === 'function') {
+              createdAtISO = data.createdAt.toDate().toISOString();
+            } else if (data.createdAt instanceof Date) {
+              createdAtISO = data.createdAt.toISOString();
+            } else if (typeof data.createdAt === 'string') {
+              createdAtISO = data.createdAt;
+            } else if (data.createdAt && typeof data.createdAt === 'object' && data.createdAt._seconds) {
+              // Handle raw Firestore timestamp object if toDate is missing
+              createdAtISO = new Date(data.createdAt._seconds * 1000).toISOString();
+            }
+          }
+
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: createdAtISO,
+          };
+        } catch (mapErr) {
+          console.error(`[API] Error mapping lesson doc ${doc.id}:`, mapErr);
+          // Return a minimal version instead of crashing the whole request
+          return { id: doc.id, title: 'Error loading lesson data', authorId, createdAt: null };
+        }
+      }).sort((a, b) => {
         const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return dateB - dateA; // Descending

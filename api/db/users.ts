@@ -58,13 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const data = snap.data()!;
       inviteCode = data.inviteCode;
       
-      const determinedRole = email === 'guchengslash@gmail.com' 
-        ? 'teacher' 
-        : (data.role || role || 'student');
-      
-      if (determinedRole === 'teacher' && !inviteCode) {
-        inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      }
+      const determinedRole = data.role || role || 'student';
 
       const updateData: Record<string, any> = {
         uid,
