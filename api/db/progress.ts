@@ -24,14 +24,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const snapshot = await db
         .collection('progress')
         .where('userId', '==', userId)
-        .orderBy('completedAt', 'desc')
         .get();
 
       const progress = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         completedAt: doc.data().completedAt?.toDate?.()?.toISOString() || null,
-      }));
+      })).sort((a, b) => {
+        const dateA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const dateB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return dateB - dateA; // Descending
+      });
 
       return res.status(200).json({ progress });
     }

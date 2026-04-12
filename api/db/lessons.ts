@@ -25,14 +25,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const snapshot = await db
         .collection('lessons')
         .where('authorId', '==', authorId)
-        .orderBy('createdAt', 'desc')
         .get();
 
       const lessons = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || null,
-      }));
+      })).sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA; // Descending
+      });
 
       return res.status(200).json({ lessons });
     }
