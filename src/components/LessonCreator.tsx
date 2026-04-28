@@ -1,20 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { authService, dbService, llmService } from '../services';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, FileText, Music } from 'lucide-react';
+import { AudioClipReviewer } from './AudioClipReviewer';
+import {
+  decodeAudioFile,
+  detectSilences,
+  computeBoundaries,
+} from '../services/audioClipper';
 
 interface LessonCreatorProps {
   onBack: () => void;
   onCreated: (lessonId: string, title: string) => void;
 }
 
+type CreationMode = 'text-only' | 'audio-upload';
+
+/** Maximum upload size in bytes (10 MB) */
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
 export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
+  const [creationMode, setCreationMode] = useState<CreationMode>('text-only');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, status: '' });
   const [error, setError] = useState('');
 
-  const handleCreate = async (e: React.FormEvent) => {
+  // Audio upload state
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Review step state (audio-upload mode)
+  const [reviewData, setReviewData] = useState<{
+    sentences: string[];
+    audioBuffer: AudioBuffer;
+    boundaries: number[];
+    usedFallback: boolean;
+  } | null>(null);
+
+  // ── Text-only creation (existing flow) ─────────────────────────────
+  const handleCreateTextOnly = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !text.trim()) {
       setError('Please provide both title and text.');
@@ -70,6 +96,109 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
     }
   };
 
+  // ── Audio upload creation ──────────────────────────────────────────
+  const handleCreateWithAudio = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !text.trim()) {
+      setError('Please provide both title and transcript.');
+      return;
+    }
+    if (!audioFile) {
+      setError('Please upload an audio file.');
+      return;
+    }
+    if (audioFile.size > MAX_FILE_SIZE) {
+      setError(`Audio file is too large (${(audioFile.size / 1024 / 1024).toFixed(1)} MB). Maximum is 10 MB.`);
+      return;
+    }
+
+    setIsProcessing(true);
+    setError('');
+    setProgress({ current: 0, total: 0, status: 'Splitting transcript into sentences...' });
+
+    try {
+      // Step 1: Split transcript
+      const sentences = await llmService.splitIntoSentences(text);
+      if (sentences.length === 0) throw new Error("Could not extract any sentences.");
+
+      setProgress({ current: 0, total: 0, status: 'Decoding audio file...' });
+
+      // Step 2: Decode audio
+      const audioBuffer = await decodeAudioFile(audioFile);
+
+      setProgress({ current: 0, total: 0, status: 'Detecting sentence boundaries...' });
+
+      // Step 3: Detect silences and compute boundaries
+      const silences = detectSilences(audioBuffer);
+      const { boundaries, usedFallback } = computeBoundaries(
+        silences,
+        sentences.length,
+        audioBuffer.duration
+      );
+
+      // Step 4: Transition to review step
+      setReviewData({
+        sentences,
+        audioBuffer,
+        boundaries,
+        usedFallback,
+      });
+      setIsProcessing(false);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'An error occurred during processing.');
+      setIsProcessing(false);
+    }
+  };
+
+  // ── File handling ──────────────────────────────────────────────────
+  const handleFileSelect = (file: File) => {
+    if (!file.type.startsWith('audio/')) {
+      setError('Please upload an audio file (MP3, WAV, M4A, OGG, etc.).');
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 10 MB.`);
+      return;
+    }
+    setError('');
+    setAudioFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileSelect(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  // ── If in review mode, show the AudioClipReviewer ──────────────────
+  if (reviewData) {
+    return (
+      <AudioClipReviewer
+        title={title.trim()}
+        sentences={reviewData.sentences}
+        audioBuffer={reviewData.audioBuffer}
+        initialBoundaries={reviewData.boundaries}
+        usedFallback={reviewData.usedFallback}
+        onBack={() => {
+          setReviewData(null);
+          setIsProcessing(false);
+        }}
+        onCreated={onCreated}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
@@ -87,6 +216,36 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
             <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
               Create New Lesson
             </h3>
+
+            {/* Mode Toggle */}
+            <div className="flex rounded-lg border border-gray-200 p-1 mb-6 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => { setCreationMode('text-only'); setError(''); }}
+                disabled={isProcessing}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all ${
+                  creationMode === 'text-only'
+                    ? 'bg-white shadow-sm text-indigo-700 border border-indigo-200'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <FileText className="h-4 w-4" />
+                Text Only (AI Audio)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setCreationMode('audio-upload'); setError(''); }}
+                disabled={isProcessing}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all ${
+                  creationMode === 'audio-upload'
+                    ? 'bg-white shadow-sm text-indigo-700 border border-indigo-200'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Music className="h-4 w-4" />
+                Upload Audio + Transcript
+              </button>
+            </div>
             
             {error && (
               <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative">
@@ -94,7 +253,10 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
               </div>
             )}
 
-            <form onSubmit={handleCreate} className="space-y-6">
+            <form
+              onSubmit={creationMode === 'text-only' ? handleCreateTextOnly : handleCreateWithAudio}
+              className="space-y-6"
+            >
               <div>
                 <label htmlFor="title" className="block text-sm font-medium text-gray-700">
                   Lesson Title
@@ -110,9 +272,61 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
                 />
               </div>
 
+              {/* Audio Upload (audio-upload mode only) */}
+              {creationMode === 'audio-upload' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Audio File
+                  </label>
+                  <div
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all ${
+                      isDragging
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : audioFile
+                        ? 'border-green-300 bg-green-50'
+                        : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      disabled={isProcessing}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileSelect(file);
+                      }}
+                    />
+                    {audioFile ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <Music className="h-10 w-10 text-green-500" />
+                        <p className="text-sm font-medium text-green-700">{audioFile.name}</p>
+                        <p className="text-xs text-green-600">
+                          {(audioFile.size / 1024 / 1024).toFixed(1)} MB
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">Click or drag to replace</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload className="h-10 w-10 text-gray-400" />
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium text-indigo-600">Click to upload</span> or drag and drop
+                        </p>
+                        <p className="text-xs text-gray-400">MP3, WAV, M4A, OGG — max 10 MB</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label htmlFor="text" className="block text-sm font-medium text-gray-700">
-                  Lesson Text
+                  {creationMode === 'text-only' ? 'Lesson Text' : 'Transcript'}
                 </label>
                 <div className="mt-1">
                   <textarea
@@ -122,7 +336,11 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
                     onChange={(e) => setText(e.target.value)}
                     disabled={isProcessing}
                     className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border border-gray-300 rounded-md py-2 px-3"
-                    placeholder="Paste the English text here. The AI will split it into sentences and generate audio for each."
+                    placeholder={
+                      creationMode === 'text-only'
+                        ? 'Paste the English text here. The AI will split it into sentences and generate audio for each.'
+                        : 'Paste the transcript that matches the uploaded audio. The AI will split it into sentences and align them with the audio.'
+                    }
                   />
                 </div>
               </div>
@@ -159,7 +377,11 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
                   disabled={isProcessing}
                   className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
                 >
-                  {isProcessing ? 'Processing...' : 'Create Lesson'}
+                  {isProcessing
+                    ? 'Processing...'
+                    : creationMode === 'text-only'
+                    ? 'Create Lesson'
+                    : 'Process & Review Clips'}
                 </button>
               </div>
             </form>
