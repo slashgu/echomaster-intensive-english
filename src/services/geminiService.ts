@@ -1,5 +1,9 @@
 import { ILLMService } from './types';
 import nlp from 'compromise';
+import { decodeAudioFile, downsampleToWavBlob } from './audioClipper';
+
+/** Max segment duration in seconds for chunked transcription */
+const TRANSCRIBE_SEGMENT_SEC = 120; // 2 minutes → ~3.8 MB at 16kHz mono
 
 export const geminiLLMService: ILLMService = {
   async splitIntoSentences(text: string): Promise<string[]> {
@@ -65,28 +69,44 @@ export const geminiLLMService: ILLMService = {
 
   async transcribeAudio(file: File): Promise<string> {
     try {
-      const mimeType = file.type || 'audio/mpeg';
-      const arrayBuffer = await file.arrayBuffer();
+      // Decode the full file to AudioBuffer (client-side, instant)
+      const audioBuffer = await decodeAudioFile(file);
+      const totalDuration = audioBuffer.duration;
 
-      const response = await fetch(
-        `/api/gemini?action=transcribe&mimeType=${encodeURIComponent(mimeType)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: arrayBuffer,
+      // Split into segments of TRANSCRIBE_SEGMENT_SEC each
+      const segmentCount = Math.ceil(totalDuration / TRANSCRIBE_SEGMENT_SEC);
+      const transcripts: string[] = [];
+
+      for (let i = 0; i < segmentCount; i++) {
+        const startSec = i * TRANSCRIBE_SEGMENT_SEC;
+        const endSec = Math.min((i + 1) * TRANSCRIBE_SEGMENT_SEC, totalDuration);
+
+        // Downsample segment to 16kHz mono WAV (~3.8 MB per 2 min)
+        const wavBlob = await downsampleToWavBlob(audioBuffer, startSec, endSec);
+
+        // Send raw binary to server
+        const response = await fetch(
+          `/api/gemini?action=transcribe&mimeType=${encodeURIComponent('audio/wav')}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: wavBlob,
+          }
+        );
+
+        // Handle non-JSON error responses (e.g. Vercel 413)
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const text = await response.text();
+          throw new Error(`Server error (${response.status}): ${text.slice(0, 200)}`);
         }
-      );
 
-      // Handle non-JSON error responses (e.g. Vercel 413)
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        const text = await response.text();
-        throw new Error(`Server error (${response.status}): ${text.slice(0, 200)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to transcribe audio');
+        transcripts.push(data.transcript);
       }
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to transcribe audio');
-      return data.transcript;
+      return transcripts.join(' ');
     } catch (error: any) {
       console.error("Error transcribing audio:", error);
       throw error;

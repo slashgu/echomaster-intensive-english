@@ -298,3 +298,70 @@ export function computeEvenBoundaries(
   }
   return boundaries;
 }
+
+/**
+ * Downsample a time range from an AudioBuffer to a compact mono WAV Blob.
+ *
+ * Used for chunked transcription: each ~2-min segment at 16kHz mono 16-bit
+ * produces ~3.8 MB, safely under Vercel's 4.5 MB request body limit.
+ *
+ * @param buffer     - Source AudioBuffer (any sample rate / channels)
+ * @param startSec   - Start time in seconds
+ * @param endSec     - End time in seconds
+ * @param targetRate - Target sample rate (default 16000 Hz)
+ * @returns A WAV Blob ready to send as raw binary
+ */
+export async function downsampleToWavBlob(
+  buffer: AudioBuffer,
+  startSec: number,
+  endSec: number,
+  targetRate = 16000
+): Promise<Blob> {
+  const duration = endSec - startSec;
+  const targetLength = Math.ceil(duration * targetRate);
+
+  // Use OfflineAudioContext to resample to target rate, mono
+  const offlineCtx = new OfflineAudioContext(1, targetLength, targetRate);
+  const source = offlineCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(offlineCtx.destination);
+  source.start(0, startSec, duration);
+
+  const resampled = await offlineCtx.startRendering();
+
+  // Encode the resampled buffer as 16-bit PCM WAV
+  const samples = resampled.getChannelData(0);
+  const bytesPerSample = 2;
+  const dataLength = samples.length * bytesPerSample;
+  const wavBuffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(wavBuffer);
+
+  const writeString = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);   // PCM
+  view.setUint16(22, 1, true);   // mono
+  view.setUint32(24, targetRate, true);
+  view.setUint32(28, targetRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 16, true);  // 16-bit
+  writeString(36, 'data');
+  view.setUint32(40, dataLength, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    offset += 2;
+  }
+
+  return new Blob([wavBuffer], { type: 'audio/wav' });
+}
