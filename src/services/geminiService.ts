@@ -73,9 +73,9 @@ export const geminiLLMService: ILLMService = {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to transcribe audio');
       return data.transcript;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error transcribing audio:", error);
-      throw new Error("Failed to transcribe audio. Please try again or paste the transcript manually.");
+      throw error;
     }
   }
 };

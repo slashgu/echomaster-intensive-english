@@ -1,6 +1,38 @@
 import { GoogleGenAI, Modality } from "@google/genai";
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// Disable default body parser to handle large audio payloads (>4.5MB)
+// that exceed Vercel's default JSON body parser limit.
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+  maxDuration: 60,
+};
+
+/**
+ * Parse raw request body as JSON string.
+ * Reads the stream manually to bypass Vercel's body parser size limit.
+ */
+function parseRawBody(req): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      try {
+        const body = Buffer.concat(chunks).toString('utf-8');
+        resolve(JSON.parse(body));
+      } catch (e) {
+        reject(new Error('Invalid JSON body'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
 
 /**
  * Unified Gemini API endpoint.
@@ -8,13 +40,21 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
  * Dispatches by `action` field in the request body:
  *   - "audio"      → TTS generation
  *   - "explain"    → Phrase explanation
- *   - "transcribe" → Audio transcription
+ *   - "transcribe" → Audio transcription (uses Gemini Files API for large files)
  *
  * This consolidation keeps us within Vercel Hobby's 12-function limit.
  */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  try {
+    // Parse body manually since we disabled the default body parser
+    const body = await parseRawBody(req);
+    req.body = body;
+  } catch (e) {
+    return res.status(400).json({ error: 'Invalid request body' });
   }
 
   const { action } = req.body || {};
@@ -122,7 +162,7 @@ async function handleExplain(req, res) {
   }
 }
 
-// ── Audio Transcription ──────────────────────────────────────────────
+// ── Audio Transcription (uses Gemini Files API for large payloads) ────
 
 async function handleTranscribe(req, res) {
   const { audioBase64, mimeType } = req.body || {};
@@ -130,16 +170,32 @@ async function handleTranscribe(req, res) {
     return res.status(400).json({ error: 'audioBase64 is required' });
   }
 
+  let tempFilePath: string | null = null;
+
   try {
+    // Write the audio to a temp file for the Gemini Files API
+    const ext = (mimeType || 'audio/mpeg').split('/')[1] || 'mp3';
+    tempFilePath = path.join(os.tmpdir(), `transcribe_${Date.now()}.${ext}`);
+    fs.writeFileSync(tempFilePath, Buffer.from(audioBase64, 'base64'));
+
+    // Upload to Gemini Files API
+    const uploadResult = await ai.files.upload({
+      file: tempFilePath,
+      config: {
+        mimeType: mimeType || 'audio/mpeg',
+      },
+    });
+
+    // Generate transcription using the uploaded file reference
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
         {
           parts: [
             {
-              inlineData: {
-                mimeType: mimeType || 'audio/wav',
-                data: audioBase64,
+              fileData: {
+                mimeType: uploadResult.mimeType || mimeType || 'audio/mpeg',
+                fileUri: uploadResult.uri,
               },
             },
             {
@@ -152,12 +208,19 @@ async function handleTranscribe(req, res) {
 
     const transcript = response.text?.trim();
     if (!transcript) {
-      return res.status(500).json({ error: 'No transcript returned' });
+      return res.status(500).json({ error: 'No transcript returned from Gemini' });
     }
 
     return res.status(200).json({ transcript });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error transcribing audio via API:", error);
-    return res.status(500).json({ error: 'Failed to transcribe audio.' });
+    return res.status(500).json({
+      error: `Transcription failed: ${error?.message || 'Unknown error'}`,
+    });
+  } finally {
+    // Cleanup temp file
+    if (tempFilePath) {
+      try { fs.unlinkSync(tempFilePath); } catch {}
+    }
   }
 }
