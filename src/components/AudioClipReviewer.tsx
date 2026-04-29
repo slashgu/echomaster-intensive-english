@@ -3,10 +3,7 @@ import { ArrowLeft, Play, Pause, Save, Loader2, AlertTriangle, Volume2, Merge, S
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { authService, dbService, llmService } from '../services';
-import {
-  sliceAudioBuffer,
-  audioBufferToWavBase64,
-} from '../services/audioClipper';
+import { downsampleToWavBlob } from '../services/audioClipper';
 
 interface AudioClipReviewerProps {
   /** Lesson title provided by the teacher */
@@ -284,9 +281,10 @@ export function AudioClipReviewer({
         const start = boundaries[i];
         const end = i < sentenceList.length - 1 ? boundaries[i + 1] : totalDuration;
 
-        // Slice the audio for this sentence
-        const clipBuffer = sliceAudioBuffer(audioBuffer, start, end);
-        const audioBase64 = audioBufferToWavBase64(clipBuffer);
+        // Downsample the clip to 24kHz mono WAV — compact enough for
+        // Firestore's 1MB doc limit and Vercel's 4.5MB body limit
+        const wavBlob = await downsampleToWavBlob(audioBuffer, start, end, 24000);
+        const audioBase64 = await blobToBase64(wavBlob);
 
         // Generate explanation in parallel with save
         let explanation = '';
@@ -602,6 +600,20 @@ export function AudioClipReviewer({
       </main>
     </div>
   );
+}
+
+// ── Helper: Convert a Blob to a base64 string ───────────────────────
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      resolve(dataUrl.split(',')[1]); // Strip "data:audio/wav;base64," prefix
+    };
+    reader.onerror = () => reject(new Error('Failed to read audio blob.'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 // ── Helper: Convert AudioBuffer to a WAV Blob for WaveSurfer ─────────

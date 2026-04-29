@@ -2,6 +2,22 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuth } from '../_lib/authMiddleware.js';
 import { getAdminDb } from '../_lib/firebaseAdmin.js';
 
+// Disable default body parser — audio clip base64 data can exceed the 4.5MB default limit.
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+function readRawBody(req: VercelRequest): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 /**
  * /api/db/sentences
  * GET   ?lessonId=xxx                          — list sentences for a lesson
@@ -11,6 +27,16 @@ import { getAdminDb } from '../_lib/firebaseAdmin.js';
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authUser = await verifyAuth(req, res);
   if (!authUser) return;
+
+  // Parse body manually for POST/PATCH (since we disabled the default body parser)
+  if (req.method === 'POST' || req.method === 'PATCH') {
+    try {
+      const raw = await readRawBody(req);
+      (req as any).body = JSON.parse(raw.toString('utf-8'));
+    } catch {
+      return res.status(400).json({ error: 'Invalid request body' });
+    }
+  }
 
   const db = getAdminDb();
 
