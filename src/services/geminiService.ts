@@ -33,10 +33,10 @@ export const geminiLLMService: ILLMService = {
 
   async generateAudioForSentence(sentence: string): Promise<string | null> {
     try {
-      const response = await fetch('/api/gemini/audio', {
+      const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sentence }),
+        body: JSON.stringify({ action: 'audio', sentence }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to generate audio');
@@ -49,10 +49,10 @@ export const geminiLLMService: ILLMService = {
 
   async explainWordOrPhrase(phrase: string, context: string): Promise<string> {
     try {
-      const response = await fetch('/api/gemini/explain', {
+      const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phrase, context }),
+        body: JSON.stringify({ action: 'explain', phrase, context }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to get explanation');
@@ -65,10 +65,10 @@ export const geminiLLMService: ILLMService = {
 
   async transcribeAudio(audioBase64: string, mimeType?: string): Promise<string> {
     try {
-      const response = await fetch('/api/gemini/transcribe', {
+      const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audioBase64, mimeType: mimeType || 'audio/wav' }),
+        body: JSON.stringify({ action: 'transcribe', audioBase64, mimeType: mimeType || 'audio/wav' }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to transcribe audio');
