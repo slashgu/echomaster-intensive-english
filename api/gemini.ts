@@ -5,8 +5,7 @@ import os from 'os';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Disable default body parser to handle large audio payloads (>4.5MB)
-// that exceed Vercel's default JSON body parser limit.
+// Disable default body parser — we handle JSON and binary bodies ourselves.
 export const config = {
   api: {
     bodyParser: false,
@@ -15,21 +14,13 @@ export const config = {
 };
 
 /**
- * Parse raw request body as JSON string.
- * Reads the stream manually to bypass Vercel's body parser size limit.
+ * Read the raw request body as a Buffer.
  */
-function parseRawBody(req): Promise<any> {
+function readRawBody(req): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => {
-      try {
-        const body = Buffer.concat(chunks).toString('utf-8');
-        resolve(JSON.parse(body));
-      } catch (e) {
-        reject(new Error('Invalid JSON body'));
-      }
-    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -37,22 +28,26 @@ function parseRawBody(req): Promise<any> {
 /**
  * Unified Gemini API endpoint.
  *
- * Dispatches by `action` field in the request body:
- *   - "audio"      → TTS generation
- *   - "explain"    → Phrase explanation
- *   - "transcribe" → Audio transcription (uses Gemini Files API for large files)
- *
- * This consolidation keeps us within Vercel Hobby's 12-function limit.
+ * Routing:
+ *   - ?action=transcribe  → raw binary body (audio file bytes)
+ *   - JSON body { action } → "audio" | "explain"
  */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // Check query param first (used by transcribe to send raw binary)
+  const queryAction = req.query?.action;
+
+  if (queryAction === 'transcribe') {
+    return handleTranscribe(req, res);
+  }
+
+  // For other actions, parse body as JSON
   try {
-    // Parse body manually since we disabled the default body parser
-    const body = await parseRawBody(req);
-    req.body = body;
+    const raw = await readRawBody(req);
+    req.body = JSON.parse(raw.toString('utf-8'));
   } catch (e) {
     return res.status(400).json({ error: 'Invalid request body' });
   }
@@ -64,8 +59,6 @@ export default async function handler(req, res) {
       return handleAudio(req, res);
     case 'explain':
       return handleExplain(req, res);
-    case 'transcribe':
-      return handleTranscribe(req, res);
     default:
       return res.status(400).json({ error: `Unknown action: ${action}` });
   }
@@ -162,28 +155,29 @@ async function handleExplain(req, res) {
   }
 }
 
-// ── Audio Transcription (uses Gemini Files API for large payloads) ────
+// ── Audio Transcription (raw binary body → Gemini Files API) ─────────
 
 async function handleTranscribe(req, res) {
-  const { audioBase64, mimeType } = req.body || {};
-  if (!audioBase64) {
-    return res.status(400).json({ error: 'audioBase64 is required' });
-  }
+  const mimeType = (req.query?.mimeType as string) || 'audio/mpeg';
 
   let tempFilePath: string | null = null;
 
   try {
-    // Write the audio to a temp file for the Gemini Files API
-    const ext = (mimeType || 'audio/mpeg').split('/')[1] || 'mp3';
+    // Read the raw binary body (no base64 — raw audio file bytes)
+    const audioBuffer = await readRawBody(req);
+    if (!audioBuffer || audioBuffer.length === 0) {
+      return res.status(400).json({ error: 'No audio data received' });
+    }
+
+    // Write to temp file for the Gemini Files API
+    const ext = mimeType.split('/')[1] || 'mp3';
     tempFilePath = path.join(os.tmpdir(), `transcribe_${Date.now()}.${ext}`);
-    fs.writeFileSync(tempFilePath, Buffer.from(audioBase64, 'base64'));
+    fs.writeFileSync(tempFilePath, audioBuffer);
 
     // Upload to Gemini Files API
     const uploadResult = await ai.files.upload({
       file: tempFilePath,
-      config: {
-        mimeType: mimeType || 'audio/mpeg',
-      },
+      config: { mimeType },
     });
 
     // Generate transcription using the uploaded file reference
@@ -194,7 +188,7 @@ async function handleTranscribe(req, res) {
           parts: [
             {
               fileData: {
-                mimeType: uploadResult.mimeType || mimeType || 'audio/mpeg',
+                mimeType: uploadResult.mimeType || mimeType,
                 fileUri: uploadResult.uri,
               },
             },
@@ -218,7 +212,6 @@ async function handleTranscribe(req, res) {
       error: `Transcription failed: ${error?.message || 'Unknown error'}`,
     });
   } finally {
-    // Cleanup temp file
     if (tempFilePath) {
       try { fs.unlinkSync(tempFilePath); } catch {}
     }

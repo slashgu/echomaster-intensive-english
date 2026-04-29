@@ -63,13 +63,27 @@ export const geminiLLMService: ILLMService = {
     }
   },
 
-  async transcribeAudio(audioBase64: string, mimeType?: string): Promise<string> {
+  async transcribeAudio(file: File): Promise<string> {
     try {
-      const response = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'transcribe', audioBase64, mimeType: mimeType || 'audio/wav' }),
-      });
+      const mimeType = file.type || 'audio/mpeg';
+      const arrayBuffer = await file.arrayBuffer();
+
+      const response = await fetch(
+        `/api/gemini?action=transcribe&mimeType=${encodeURIComponent(mimeType)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: arrayBuffer,
+        }
+      );
+
+      // Handle non-JSON error responses (e.g. Vercel 413)
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Server error (${response.status}): ${text.slice(0, 200)}`);
+      }
+
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to transcribe audio');
       return data.transcript;
