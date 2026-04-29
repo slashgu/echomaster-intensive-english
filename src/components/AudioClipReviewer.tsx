@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Play, Pause, Save, Loader2, CheckCircle2, AlertTriangle, Volume2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Save, Loader2, AlertTriangle, Volume2, Merge, Scissors, X, Check } from 'lucide-react';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { authService, dbService, llmService } from '../services';
@@ -46,7 +46,7 @@ const ACTIVE_REGION_COLORS = [
 
 export function AudioClipReviewer({
   title,
-  sentences,
+  sentences: initialSentences,
   audioBuffer,
   initialBoundaries,
   usedFallback,
@@ -57,13 +57,20 @@ export function AudioClipReviewer({
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const regionsRef = useRef<RegionsPlugin | null>(null);
 
+  // Mutable state for sentences & boundaries (editable via merge/split)
+  const [sentenceList, setSentenceList] = useState<string[]>(initialSentences);
   const [boundaries, setBoundaries] = useState<number[]>(initialBoundaries);
+
   const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState({ current: 0, total: 0, status: '' });
   const [error, setError] = useState('');
   const [isReady, setIsReady] = useState(false);
+
+  // Split mode state
+  const [splitIndex, setSplitIndex] = useState<number | null>(null);
+  const [splitTextPos, setSplitTextPos] = useState(0);
 
   const totalDuration = audioBuffer.duration;
 
@@ -117,9 +124,9 @@ export function AudioClipReviewer({
     regions.clearRegions();
 
     // Create a region for each sentence
-    for (let i = 0; i < sentences.length; i++) {
+    for (let i = 0; i < sentenceList.length; i++) {
       const start = boundaries[i];
-      const end = i < sentences.length - 1 ? boundaries[i + 1] : totalDuration;
+      const end = i < sentenceList.length - 1 ? boundaries[i + 1] : totalDuration;
       const isActive = activeSentenceIndex === i;
 
       const region = regions.addRegion({
@@ -139,14 +146,14 @@ export function AudioClipReviewer({
         setBoundaries(prev => {
           const updated = [...prev];
           updated[i] = region.start;
-          if (i < sentences.length - 1) {
+          if (i < sentenceList.length - 1) {
             updated[i + 1] = region.end;
           }
           return updated;
         });
       });
     }
-  }, [boundaries, isReady, activeSentenceIndex, sentences.length, totalDuration]);
+  }, [boundaries, isReady, activeSentenceIndex, sentenceList.length, totalDuration]);
 
   // ── Play a specific sentence clip ──────────────────────────────────
   const playSentence = useCallback((index: number) => {
@@ -156,7 +163,7 @@ export function AudioClipReviewer({
     setActiveSentenceIndex(index);
 
     const start = boundaries[index];
-    const end = index < sentences.length - 1 ? boundaries[index + 1] : totalDuration;
+    const end = index < sentenceList.length - 1 ? boundaries[index + 1] : totalDuration;
 
     ws.setTime(start);
     ws.play();
@@ -172,32 +179,110 @@ export function AudioClipReviewer({
       }
     };
     requestAnimationFrame(checkPosition);
-  }, [boundaries, isReady, sentences.length, totalDuration]);
+  }, [boundaries, isReady, sentenceList.length, totalDuration]);
+
+  // ── Merge: combine sentence[index] with sentence[index+1] ─────────
+  const handleMerge = useCallback((index: number) => {
+    if (index >= sentenceList.length - 1) return;
+
+    setSentenceList(prev => {
+      const updated = [...prev];
+      // Combine the two sentences
+      updated[index] = `${updated[index]} ${updated[index + 1]}`;
+      // Remove the next sentence
+      updated.splice(index + 1, 1);
+      return updated;
+    });
+
+    setBoundaries(prev => {
+      const updated = [...prev];
+      // Remove the boundary between the two merged sentences
+      updated.splice(index + 1, 1);
+      return updated;
+    });
+
+    // Reset active selection
+    setActiveSentenceIndex(index);
+    setSplitIndex(null);
+  }, [sentenceList.length]);
+
+  // ── Split: open split mode for a sentence ──────────────────────────
+  const handleStartSplit = useCallback((index: number) => {
+    const text = sentenceList[index];
+    // Default split position: find the nearest space to the middle
+    const mid = Math.floor(text.length / 2);
+    let pos = mid;
+    // Search for the nearest space
+    for (let d = 0; d < text.length; d++) {
+      if (mid + d < text.length && text[mid + d] === ' ') { pos = mid + d; break; }
+      if (mid - d >= 0 && text[mid - d] === ' ') { pos = mid - d; break; }
+    }
+    setSplitIndex(index);
+    setSplitTextPos(pos);
+  }, [sentenceList]);
+
+  const handleConfirmSplit = useCallback(() => {
+    if (splitIndex === null) return;
+
+    const text = sentenceList[splitIndex];
+    const part1 = text.slice(0, splitTextPos).trim();
+    const part2 = text.slice(splitTextPos).trim();
+
+    if (!part1 || !part2) {
+      setError('Both parts must contain text.');
+      return;
+    }
+
+    // Calculate the audio split point: proportional to text position
+    const start = boundaries[splitIndex];
+    const end = splitIndex < sentenceList.length - 1
+      ? boundaries[splitIndex + 1]
+      : totalDuration;
+    const ratio = splitTextPos / text.length;
+    const audioSplitTime = start + (end - start) * ratio;
+
+    setSentenceList(prev => {
+      const updated = [...prev];
+      updated.splice(splitIndex, 1, part1, part2);
+      return updated;
+    });
+
+    setBoundaries(prev => {
+      const updated = [...prev];
+      // Insert a new boundary at the audio split point
+      updated.splice(splitIndex + 1, 0, audioSplitTime);
+      return updated;
+    });
+
+    setSplitIndex(null);
+    setActiveSentenceIndex(splitIndex);
+    setError('');
+  }, [splitIndex, splitTextPos, sentenceList, boundaries, totalDuration]);
 
   // ── Save the lesson ────────────────────────────────────────────────
   const handleSave = async () => {
     setIsSaving(true);
     setError('');
-    setSaveProgress({ current: 0, total: sentences.length, status: 'Creating lesson...' });
+    setSaveProgress({ current: 0, total: sentenceList.length, status: 'Creating lesson...' });
 
     try {
       const user = authService.getCurrentUser();
       if (!user) throw new Error('Not authenticated');
 
-      const lessonId = await dbService.createLesson(title, user.uid, sentences.length);
+      const lessonId = await dbService.createLesson(title, user.uid, sentenceList.length);
 
-      for (let i = 0; i < sentences.length; i++) {
-        const sentenceText = sentences[i].trim();
+      for (let i = 0; i < sentenceList.length; i++) {
+        const sentenceText = sentenceList[i].trim();
         if (!sentenceText) continue;
 
         setSaveProgress({
           current: i + 1,
-          total: sentences.length,
-          status: `Processing sentence ${i + 1}/${sentences.length}...`,
+          total: sentenceList.length,
+          status: `Processing sentence ${i + 1}/${sentenceList.length}...`,
         });
 
         const start = boundaries[i];
-        const end = i < sentences.length - 1 ? boundaries[i + 1] : totalDuration;
+        const end = i < sentenceList.length - 1 ? boundaries[i + 1] : totalDuration;
 
         // Slice the audio for this sentence
         const clipBuffer = sliceAudioBuffer(audioBuffer, start, end);
@@ -357,54 +442,158 @@ export function AudioClipReviewer({
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-100">
             <h3 className="text-sm font-medium text-gray-700 uppercase tracking-wider">
-              Sentences ({sentences.length})
+              Sentences ({sentenceList.length})
             </h3>
             <p className="text-xs text-gray-400 mt-1">
-              Click the play button to audition each clip. Adjust boundaries on the waveform above if needed.
+              Play clips to audition. Use Split/Merge to adjust sentence grouping. Drag waveform edges to fine-tune boundaries.
             </p>
           </div>
           <ul className="divide-y divide-gray-100">
-            {sentences.map((sentence, index) => {
+            {sentenceList.map((sentence, index) => {
               const start = boundaries[index];
-              const end = index < sentences.length - 1 ? boundaries[index + 1] : totalDuration;
+              const end = index < sentenceList.length - 1 ? boundaries[index + 1] : totalDuration;
               const duration = end - start;
               const isActive = activeSentenceIndex === index;
+              const isSplitting = splitIndex === index;
 
               return (
                 <li
-                  key={index}
-                  className={`px-6 py-4 flex items-start gap-4 transition-colors cursor-pointer ${
+                  key={`${index}-${sentenceList.length}`}
+                  className={`px-6 py-4 transition-colors ${
                     isActive
                       ? 'bg-indigo-50 border-l-4 border-indigo-500'
                       : 'hover:bg-gray-50 border-l-4 border-transparent'
                   }`}
-                  onClick={() => setActiveSentenceIndex(index)}
                 >
-                  {/* Sentence number */}
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm font-mono text-gray-500">
-                    {index + 1}
-                  </div>
+                  {/* Split mode inline editor */}
+                  {isSplitting ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-50 rounded-md px-3 py-2">
+                        <Scissors className="h-3.5 w-3.5" />
+                        Click in the text to choose the split point
+                      </div>
+                      <div className="relative bg-white border border-gray-200 rounded-lg p-3">
+                        <p className="text-sm text-gray-900 leading-relaxed select-none cursor-text">
+                          <span className="bg-blue-100 text-blue-800 rounded-sm px-0.5">
+                            {sentence.slice(0, splitTextPos)}
+                          </span>
+                          <span className="inline-block w-0.5 h-4 bg-red-500 mx-0.5 align-middle animate-pulse" />
+                          <span className="bg-emerald-100 text-emerald-800 rounded-sm px-0.5">
+                            {sentence.slice(splitTextPos)}
+                          </span>
+                        </p>
+                        {/* Clickable overlay to choose split position */}
+                        <div className="absolute inset-0 p-3">
+                          <p className="text-sm leading-relaxed opacity-0">
+                            {sentence.split('').map((char, ci) => (
+                              <span
+                                key={ci}
+                                onClick={() => {
+                                  // Find nearest word boundary
+                                  let pos = ci;
+                                  if (char !== ' ') {
+                                    // Look for nearest space
+                                    for (let d = 0; d < 20; d++) {
+                                      if (ci + d < sentence.length && sentence[ci + d] === ' ') { pos = ci + d; break; }
+                                      if (ci - d >= 0 && sentence[ci - d] === ' ') { pos = ci - d; break; }
+                                    }
+                                  }
+                                  setSplitTextPos(Math.max(1, Math.min(sentence.length - 1, pos)));
+                                }}
+                                className="cursor-text hover:bg-yellow-200 hover:bg-opacity-50"
+                              >
+                                {char}
+                              </span>
+                            ))}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Split slider for audio position */}
+                      <div className="text-xs text-gray-500">
+                        Audio split: <span className="font-mono">{formatTime(start + (end - start) * (splitTextPos / sentence.length))}</span>
+                        <span className="text-gray-400 ml-1">(proportional to text position)</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleConfirmSplit}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Confirm Split
+                        </button>
+                        <button
+                          onClick={() => setSplitIndex(null)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Normal sentence display */
+                    <div
+                      className="flex items-start gap-4 cursor-pointer"
+                      onClick={() => setActiveSentenceIndex(index)}
+                    >
+                      {/* Sentence number */}
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm font-mono text-gray-500">
+                        {index + 1}
+                      </div>
 
-                  {/* Sentence text */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-900 leading-relaxed">{sentence}</p>
-                    <p className="text-xs text-gray-400 mt-1 font-mono">
-                      {formatTime(start)} — {formatTime(end)} ({duration.toFixed(1)}s)
-                    </p>
-                  </div>
+                      {/* Sentence text */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900 leading-relaxed">{sentence}</p>
+                        <p className="text-xs text-gray-400 mt-1 font-mono">
+                          {formatTime(start)} — {formatTime(end)} ({duration.toFixed(1)}s)
+                        </p>
+                      </div>
 
-                  {/* Play button */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      playSentence(index);
-                    }}
-                    disabled={!isReady}
-                    className="flex-shrink-0 p-2 text-indigo-600 hover:bg-indigo-100 rounded-full transition-colors disabled:opacity-50"
-                    title={`Play sentence ${index + 1}`}
-                  >
-                    <Volume2 className="h-5 w-5" />
-                  </button>
+                      {/* Action buttons */}
+                      <div className="flex-shrink-0 flex items-center gap-1">
+                        {/* Play */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            playSentence(index);
+                          }}
+                          disabled={!isReady || isSaving}
+                          className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-full transition-colors disabled:opacity-50"
+                          title="Play clip"
+                        >
+                          <Volume2 className="h-4 w-4" />
+                        </button>
+
+                        {/* Split */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartSplit(index);
+                          }}
+                          disabled={isSaving || sentence.split(' ').length < 2}
+                          className="p-2 text-amber-600 hover:bg-amber-100 rounded-full transition-colors disabled:opacity-30"
+                          title="Split into two sentences"
+                        >
+                          <Scissors className="h-4 w-4" />
+                        </button>
+
+                        {/* Merge with next */}
+                        {index < sentenceList.length - 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMerge(index);
+                            }}
+                            disabled={isSaving}
+                            className="p-2 text-emerald-600 hover:bg-emerald-100 rounded-full transition-colors disabled:opacity-30"
+                            title="Merge with next sentence"
+                          >
+                            <Merge className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </li>
               );
             })}
