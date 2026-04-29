@@ -71,4 +71,5 @@ export interface ILLMService {
   splitIntoSentences(text: string): Promise<string[]>;
   generateAudioForSentence(sentence: string): Promise<string | null>;
   explainWordOrPhrase(phrase: string, context: string): Promise<string>;
+  transcribeAudio(audioBase64: string, mimeType?: string): Promise<string>;
 }

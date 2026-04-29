@@ -61,5 +61,22 @@ export const geminiLLMService: ILLMService = {
       console.error("Error explaining phrase:", error);
       return "Failed to get explanation.";
     }
+  },
+
+  async transcribeAudio(audioBase64: string, mimeType?: string): Promise<string> {
+    try {
+      const response = await fetch('/api/gemini/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioBase64, mimeType: mimeType || 'audio/wav' }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to transcribe audio');
+      return data.transcript;
+    } catch (error) {
+      console.error("Error transcribing audio:", error);
+      throw new Error("Failed to transcribe audio. Please try again or paste the transcript manually.");
+    }
   }
 };
+

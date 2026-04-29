@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { authService, dbService, llmService } from '../services';
-import { ArrowLeft, Loader2, Upload, FileText, Music } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, FileText, Music, Wand2 } from 'lucide-react';
 import { AudioClipReviewer } from './AudioClipReviewer';
 import {
   decodeAudioFile,
   detectSilences,
   computeBoundaries,
+  audioBufferToWavBase64,
 } from '../services/audioClipper';
 
 interface LessonCreatorProps {
@@ -30,6 +31,7 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   // Review step state (audio-upload mode)
   const [reviewData, setReviewData] = useState<{
@@ -96,11 +98,36 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
     }
   };
 
+  // ── Generate transcript from audio ─────────────────────────────────
+  const handleGenerateTranscript = async () => {
+    if (!audioFile) {
+      setError('Please upload an audio file first.');
+      return;
+    }
+
+    setIsTranscribing(true);
+    setError('');
+
+    try {
+      // Decode the audio file to an AudioBuffer, then convert to WAV base64
+      const audioBuffer = await decodeAudioFile(audioFile);
+      const wavBase64 = audioBufferToWavBase64(audioBuffer);
+
+      const transcript = await llmService.transcribeAudio(wavBase64, 'audio/wav');
+      setText(transcript);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'Failed to generate transcript.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
   // ── Audio upload creation ──────────────────────────────────────────
   const handleCreateWithAudio = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !text.trim()) {
-      setError('Please provide both title and transcript.');
+    if (!title.trim()) {
+      setError('Please provide a lesson title.');
       return;
     }
     if (!audioFile) {
@@ -114,11 +141,23 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
 
     setIsProcessing(true);
     setError('');
-    setProgress({ current: 0, total: 0, status: 'Splitting transcript into sentences...' });
 
     try {
+      let transcript = text.trim();
+
+      // If no transcript provided, auto-transcribe from audio
+      if (!transcript) {
+        setProgress({ current: 0, total: 0, status: 'Transcribing audio...' });
+        const audioBuffer = await decodeAudioFile(audioFile);
+        const wavBase64 = audioBufferToWavBase64(audioBuffer);
+        transcript = await llmService.transcribeAudio(wavBase64, 'audio/wav');
+        setText(transcript);
+      }
+
+      setProgress({ current: 0, total: 0, status: 'Splitting transcript into sentences...' });
+
       // Step 1: Split transcript
-      const sentences = await llmService.splitIntoSentences(text);
+      const sentences = await llmService.splitIntoSentences(transcript);
       if (sentences.length === 0) throw new Error("Could not extract any sentences.");
 
       setProgress({ current: 0, total: 0, status: 'Decoding audio file...' });
@@ -325,21 +364,46 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
               )}
 
               <div>
-                <label htmlFor="text" className="block text-sm font-medium text-gray-700">
-                  {creationMode === 'text-only' ? 'Lesson Text' : 'Transcript'}
-                </label>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="text" className="block text-sm font-medium text-gray-700">
+                    {creationMode === 'text-only' ? 'Lesson Text' : 'Transcript'}
+                    {creationMode === 'audio-upload' && (
+                      <span className="text-gray-400 font-normal ml-1">(optional — can be auto-generated)</span>
+                    )}
+                  </label>
+                  {creationMode === 'audio-upload' && audioFile && (
+                    <button
+                      type="button"
+                      onClick={handleGenerateTranscript}
+                      disabled={isProcessing || isTranscribing}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors disabled:opacity-50"
+                    >
+                      {isTranscribing ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Transcribing...
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="h-3.5 w-3.5" />
+                          Generate Transcript
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
                 <div className="mt-1">
                   <textarea
                     id="text"
                     rows={8}
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    disabled={isProcessing}
+                    disabled={isProcessing || isTranscribing}
                     className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border border-gray-300 rounded-md py-2 px-3"
                     placeholder={
                       creationMode === 'text-only'
                         ? 'Paste the English text here. The AI will split it into sentences and generate audio for each.'
-                        : 'Paste the transcript that matches the uploaded audio. The AI will split it into sentences and align them with the audio.'
+                        : 'Paste the transcript here, or click "Generate Transcript" above to auto-transcribe from the audio.'
                     }
                   />
                 </div>
