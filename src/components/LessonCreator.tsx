@@ -6,7 +6,6 @@ import {
   decodeAudioFile,
   detectSilences,
   computeBoundaries,
-  audioBufferToWavBase64,
 } from '../services/audioClipper';
 
 interface LessonCreatorProps {
@@ -18,6 +17,21 @@ type CreationMode = 'text-only' | 'audio-upload';
 
 /** Maximum upload size in bytes (10 MB) */
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+/** Read a File as base64 string (without data URL prefix) */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      // Strip "data:audio/mpeg;base64," prefix
+      const base64 = dataUrl.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error('Failed to read audio file.'));
+    reader.readAsDataURL(file);
+  });
+}
 
 export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
   const [title, setTitle] = useState('');
@@ -109,11 +123,10 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
     setError('');
 
     try {
-      // Decode the audio file to an AudioBuffer, then convert to WAV base64
-      const audioBuffer = await decodeAudioFile(audioFile);
-      const wavBase64 = audioBufferToWavBase64(audioBuffer);
-
-      const transcript = await llmService.transcribeAudio(wavBase64, 'audio/wav');
+      // Send the original compressed file (MP3/M4A/etc.) directly —
+      // much smaller than converting to uncompressed WAV
+      const base64 = await fileToBase64(audioFile);
+      const transcript = await llmService.transcribeAudio(base64, audioFile.type || 'audio/mpeg');
       setText(transcript);
     } catch (err) {
       console.error(err);
@@ -148,9 +161,8 @@ export function LessonCreator({ onBack, onCreated }: LessonCreatorProps) {
       // If no transcript provided, auto-transcribe from audio
       if (!transcript) {
         setProgress({ current: 0, total: 0, status: 'Transcribing audio...' });
-        const audioBuffer = await decodeAudioFile(audioFile);
-        const wavBase64 = audioBufferToWavBase64(audioBuffer);
-        transcript = await llmService.transcribeAudio(wavBase64, 'audio/wav');
+        const base64 = await fileToBase64(audioFile);
+        transcript = await llmService.transcribeAudio(base64, audioFile.type || 'audio/mpeg');
         setText(transcript);
       }
 
