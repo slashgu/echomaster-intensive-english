@@ -222,5 +222,23 @@ export const firebaseDbService: IDatabaseService = {
     
     // Update student
     await setDoc(doc(db, 'users', studentId), { teacherId }, { merge: true });
-  }
+  },
+
+  async assignLessonCategory(lessonId, categoryId) {
+    const { updateDoc, deleteField } = await import('firebase/firestore');
+    const ref = doc(db, 'lessons', lessonId);
+    await updateDoc(ref, { categoryId: categoryId === null ? deleteField() : categoryId });
+  },
+
+  subscribeToCategories(teacherId, callback, onError) {
+    return () => { callback([]); };
+  },
+
+  async createCategory(_name, _teacherId, _color) {
+    throw new Error('Not implemented in firebaseService');
+  },
+
+  async deleteCategory(_categoryId) {
+    throw new Error('Not implemented in firebaseService');
+  },
 };

@@ -1,4 +1,4 @@
-import { IDatabaseService, User, Lesson, Sentence, Progress } from './types';
+import { IDatabaseService, User, Lesson, LessonCategory, Sentence, Progress } from './types';
 import { apiFetch } from './apiAuthService';
 import { cacheGet, cacheSet, cacheInvalidate, cacheInvalidateByPrefix, onCacheInvalidate } from './cache';
 
@@ -44,10 +44,11 @@ async function deduplicatedFetch(url: string, options?: RequestInit) {
 // ── Cache key helpers ────────────────────────────────────────────────
 
 const CACHE_KEY = {
-  lessons:   (authorId: string)  => `lessons:${authorId}`,
-  sentences: (lessonId: string)  => `sentences:${lessonId}`,
-  students:  (teacherId: string) => `students:${teacherId}`,
-  progress:  (userId: string)    => `progress:${userId}`,
+  lessons:    (authorId: string)  => `lessons:${authorId}`,
+  sentences:  (lessonId: string)  => `sentences:${lessonId}`,
+  students:   (teacherId: string) => `students:${teacherId}`,
+  progress:   (userId: string)    => `progress:${userId}`,
+  categories: (teacherId: string) => `categories:${teacherId}`,
 } as const;
 
 export const apiDbService: IDatabaseService = {
@@ -362,6 +363,98 @@ export const apiDbService: IDatabaseService = {
 
     // Invalidate progress cache for this user
     cacheInvalidate(CACHE_KEY.progress(progress.userId));
+  },
+
+  async assignLessonCategory(lessonId: string, categoryId: string | null): Promise<void> {
+    const response = await apiFetch('/api/db/lessons', {
+      method: 'PATCH',
+      body: JSON.stringify({ id: lessonId, categoryId }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to assign category.');
+    }
+
+    cacheInvalidateByPrefix('lessons:');
+  },
+
+  subscribeToCategories(teacherId: string, callback: (categories: LessonCategory[]) => void, onError: (error: Error) => void): () => void {
+    if (!teacherId) {
+      callback([]);
+      return () => {};
+    }
+
+    let cancelled = false;
+    const cacheKey = CACHE_KEY.categories(teacherId);
+
+    const fetchCategories = async () => {
+      try {
+        const cached = cacheGet<LessonCategory[]>(cacheKey);
+        if (cached) {
+          if (!cancelled) callback(cached);
+          return;
+        }
+
+        const response = await deduplicatedFetch(`/api/db/categories?teacherId=${encodeURIComponent(teacherId)}`);
+        if (cancelled) return;
+
+        const data = await response.json();
+        if (!response.ok) {
+          onError(new Error(data.error || 'Failed to fetch categories.'));
+          return;
+        }
+
+        cacheSet(cacheKey, data.categories);
+        callback(data.categories);
+      } catch (error: any) {
+        if (!cancelled) onError(error);
+      }
+    };
+
+    fetchCategories();
+    const interval = setInterval(() => {
+      if (!cancelled) fetchCategories();
+    }, POLL_INTERVAL);
+
+    const unsubInvalidate = onCacheInvalidate(cacheKey, () => {
+      if (!cancelled) fetchCategories();
+    });
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      unsubInvalidate();
+    };
+  },
+
+  async createCategory(name: string, teacherId: string, color: string): Promise<string> {
+    const response = await apiFetch('/api/db/categories', {
+      method: 'POST',
+      body: JSON.stringify({ name, color }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to create category.');
+    }
+
+    cacheInvalidateByPrefix('categories:');
+    return data.id;
+  },
+
+  async deleteCategory(categoryId: string): Promise<void> {
+    const response = await apiFetch(`/api/db/categories?id=${encodeURIComponent(categoryId)}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to delete category.');
+    }
+
+    cacheInvalidateByPrefix('categories:');
+    cacheInvalidateByPrefix('lessons:');
   },
 
   async linkStudentToTeacher(studentId: string, inviteCode: string): Promise<void> {

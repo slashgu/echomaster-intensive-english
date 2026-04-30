@@ -88,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'PATCH') {
-      const { id, title, isConfigured } = req.body || {};
+      const { id, title, isConfigured, categoryId } = req.body || {};
       if (!id) {
         return res.status(400).json({ error: 'Lesson id is required.' });
       }
@@ -96,6 +96,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const updateData: any = {};
       if (title !== undefined) updateData.title = title;
       if (isConfigured !== undefined) updateData.isConfigured = isConfigured;
+      if (categoryId !== undefined) {
+        // null means "remove category"
+        updateData.categoryId = categoryId === null ? FieldValue.delete() : categoryId;
+      }
 
       await db.collection('lessons').doc(id).update(updateData);
       return res.status(200).json({ message: 'Lesson updated.' });

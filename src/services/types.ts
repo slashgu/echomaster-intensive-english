@@ -8,6 +8,14 @@ export interface User {
   lastActive?: any;
 }
 
+export interface LessonCategory {
+  id: string;
+  name: string;
+  teacherId: string;
+  color: string;
+  createdAt: any;
+}
+
 export interface Lesson {
   id: string;
   title: string;
@@ -15,6 +23,7 @@ export interface Lesson {
   createdAt: any;
   sentenceCount: number;
   isConfigured?: boolean;
+  categoryId?: string;
 }
 
 export interface Sentence {
@@ -55,6 +64,12 @@ export interface IDatabaseService {
   subscribeToLessons(authorId: string, callback: (lessons: Lesson[]) => void, onError: (error: Error) => void): () => void;
   createLesson(title: string, authorId: string, sentenceCount: number): Promise<string>;
   deleteLesson(lessonId: string): Promise<void>;
+  assignLessonCategory(lessonId: string, categoryId: string | null): Promise<void>;
+
+  // Category methods
+  subscribeToCategories(teacherId: string, callback: (categories: LessonCategory[]) => void, onError: (error: Error) => void): () => void;
+  createCategory(name: string, teacherId: string, color: string): Promise<string>;
+  deleteCategory(categoryId: string): Promise<void>;
   subscribeToSentences(lessonId: string, callback: (sentences: Sentence[]) => void, onError: (error: Error) => void): () => void;
   addSentenceToLesson(lessonId: string, sentence: Omit<Sentence, 'id'>): Promise<void>;
   updateSentenceGaps(lessonId: string, sentenceId: string, gapIndexes: number[]): Promise<void>;
