@@ -280,10 +280,16 @@ export function AudioClipReviewer({
 
         const start = boundaries[i];
         const end = i < sentenceList.length - 1 ? boundaries[i + 1] : totalDuration;
+        const clipDuration = end - start;
 
-        // Downsample the clip to 16kHz mono WAV — compact enough for
-        // Firestore's 1MB doc limit and Vercel's 4.5MB body limit
-        const wavBlob = await downsampleToWavBlob(audioBuffer, start, end, 16000);
+        // Dynamically choose sample rate so the base64 result fits under
+        // Firestore's ~1MB field limit.  Formula:
+        //   950KB base64 → 729,600 raw bytes → 364,800 samples (16-bit)
+        //   maxRate = 364,800 / duration
+        const maxRate = Math.floor(364800 / Math.max(clipDuration, 0.1));
+        const sampleRate = Math.min(16000, Math.max(8000, maxRate));
+
+        const wavBlob = await downsampleToWavBlob(audioBuffer, start, end, sampleRate);
         const audioBase64 = await blobToBase64(wavBlob);
 
         // Generate explanation in parallel with save
