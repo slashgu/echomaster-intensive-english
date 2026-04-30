@@ -307,12 +307,12 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
   const renderLessonCard = (lesson: Lesson) => (
     <div
       key={lesson.id}
-      className="group bg-white rounded-2xl border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer relative overflow-hidden"
+      className="group bg-white rounded-2xl border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer relative"
       onClick={() => onSelectLesson(lesson.id)}
     >
       {/* Configured status strip */}
       <div
-        className="absolute top-0 left-0 right-0 h-0.5"
+        className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl"
         style={{ backgroundColor: lesson.isConfigured ? '#22c55e' : '#f59e0b' }}
       />
 
