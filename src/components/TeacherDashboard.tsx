@@ -464,9 +464,9 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
         {/* Tab nav */}
         <div className="mb-8 flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
           {([
-            { key: 'lessons', icon: BookOpen, label: 'Manage Lessons' },
-            { key: 'students', icon: Users, label: 'Students Progress' },
-          ] as const).map(({ key, icon: Icon, label }) => (
+            { key: 'lessons', icon: BookOpen, label: 'Lessons', count: lessons.length },
+            { key: 'students', icon: Users, label: 'Students', count: students.length },
+          ] as const).map(({ key, icon: Icon, label, count }) => (
             <button
               key={key}
               onClick={() => { setActiveTab(key); setSelectedStudent(null); }}
@@ -479,6 +479,14 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
             >
               <Icon className="h-4 w-4" />
               {label}
+              {count > 0 && (
+                <span className={clsx(
+                  'text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none',
+                  activeTab === key ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-500'
+                )}>
+                  {count}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -561,14 +569,21 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
                   {students.map((student) => (
                     <li key={student.uid}>
                       <div
-                        className="px-5 py-4 hover:bg-slate-50 cursor-pointer transition-colors flex items-center justify-between"
+                        className="px-5 py-4 hover:bg-slate-50 cursor-pointer transition-colors flex items-center gap-3 justify-between"
                         onClick={() => setSelectedStudent(student)}
                       >
-                        <div>
-                          <p className="text-sm font-semibold text-indigo-600">{student.email}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Student</p>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                            <span className="text-xs font-bold text-indigo-600 uppercase">
+                              {student.email?.[0] ?? '?'}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 truncate">{student.email}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Student</p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700">Active</span>
                           <ChevronRight className="h-4 w-4 text-slate-300" />
                         </div>
@@ -590,9 +605,16 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
-              <div>
-                <h2 className="text-lg font-bold text-slate-800">{selectedStudent.email}</h2>
-                <p className="text-xs text-slate-400">Practice history</p>
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center">
+                  <span className="text-sm font-bold text-indigo-600 uppercase">
+                    {selectedStudent.email?.[0] ?? '?'}
+                  </span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">{selectedStudent.email}</h2>
+                  <p className="text-xs text-slate-400">Practice history</p>
+                </div>
               </div>
             </div>
 
@@ -616,15 +638,26 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
                             <h4 className="text-sm font-semibold text-slate-800">{lesson?.title || 'Unknown Lesson'}</h4>
                             <p className="text-xs text-slate-400 capitalize mt-0.5">Mode: {prog.mode.replace('-', ' ')}</p>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className={clsx(
-                              'px-2.5 py-0.5 rounded-full text-xs font-bold',
-                              prog.score >= 80 ? 'bg-green-100 text-green-700' : prog.score >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'
-                            )}>
-                              {prog.score}%
-                            </span>
+                          <div className="flex items-center gap-3 flex-shrink-0">
                             <div className="text-right">
-                              <p className="text-xs text-slate-400">
+                              <div className="flex items-center gap-2 justify-end">
+                                <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={clsx(
+                                      'h-full rounded-full transition-all',
+                                      prog.score >= 80 ? 'bg-green-500' : prog.score >= 50 ? 'bg-amber-400' : 'bg-red-400'
+                                    )}
+                                    style={{ width: `${prog.score}%` }}
+                                  />
+                                </div>
+                                <span className={clsx(
+                                  'text-xs font-bold w-9 text-right',
+                                  prog.score >= 80 ? 'text-green-600' : prog.score >= 50 ? 'text-amber-600' : 'text-red-500'
+                                )}>
+                                  {prog.score}%
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-400 mt-0.5">
                                 {prog.completedAt?.toDate ? prog.completedAt.toDate().toLocaleDateString() : 'Recently'}
                               </p>
                             </div>
