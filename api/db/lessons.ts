@@ -114,6 +114,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   } catch (error: any) {
     console.error('Lessons API error:', error);
-    return res.status(500).json({ error: 'Internal server error.' });
+    return res.status(500).json({ error: `Lessons API error: ${error?.message || 'Unknown error'}` });
   }
 }
