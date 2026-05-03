@@ -43,6 +43,10 @@ export interface Progress {
   score: number;
   completedAt: any;
   answers?: ProgressAnswer[];
+  teacherGrade?: number | null;
+  teacherComment?: string;
+  gradedAt?: any;
+  gradedBy?: string;
 }
 
 export interface ProgressAnswer {
@@ -79,6 +83,7 @@ export interface IDatabaseService {
   subscribeToStudents(teacherId: string, callback: (students: User[]) => void, onError: (error: Error) => void): () => void;
   subscribeToProgress(userId: string, callback: (progress: Progress[]) => void, onError: (error: Error) => void): () => void;
   saveProgress(progress: Progress): Promise<void>;
+  gradeProgress(progressId: string, teacherGrade: number | null, teacherComment: string): Promise<void>;
   linkStudentToTeacher(studentId: string, inviteCode: string): Promise<void>;
 }
 

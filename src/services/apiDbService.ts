@@ -350,6 +350,20 @@ export const apiDbService: IDatabaseService = {
     };
   },
 
+  async gradeProgress(progressId: string, teacherGrade: number | null, teacherComment: string): Promise<void> {
+    const response = await apiFetch('/api/db/progress', {
+      method: 'PATCH',
+      body: JSON.stringify({ id: progressId, teacherGrade, teacherComment }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to grade progress.');
+    }
+
+    cacheInvalidateByPrefix('progress:');
+  },
+
   async saveProgress(progress: Progress): Promise<void> {
     const response = await apiFetch('/api/db/progress', {
       method: 'POST',

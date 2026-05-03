@@ -4,7 +4,7 @@ import { Lesson, LessonCategory, User, Progress, Sentence } from '../services/ty
 import {
   Plus, BookOpen, Users, LogOut, Activity, ChevronRight, ArrowLeft,
   Trash2, Edit3, AlertTriangle, X, Tag, FolderPlus, ChevronDown,
-  GripVertical, Folder, FolderOpen
+  GripVertical, Folder, FolderOpen, MessageSquare, Award, Save, Check
 } from 'lucide-react';
 import { LessonCreator } from './LessonCreator';
 import { LessonGapEditor } from './LessonGapEditor';
@@ -177,6 +177,106 @@ function NewCategoryModal({ onClose, onSave }: NewCategoryModalProps) {
             {saving ? 'Creating…' : 'Create'}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface GradingPanelProps {
+  progressId: string;
+  initialGrade?: number | null;
+  initialComment?: string;
+  gradedAt?: any;
+}
+
+function GradingPanel({ progressId, initialGrade, initialComment, gradedAt }: GradingPanelProps) {
+  const [grade, setGrade] = useState<string>(
+    initialGrade !== undefined && initialGrade !== null ? String(initialGrade) : ''
+  );
+  const [comment, setComment] = useState(initialComment || '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const dirty =
+    (grade === '' ? null : Number(grade)) !== (initialGrade ?? null) ||
+    comment !== (initialComment || '');
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      const numericGrade = grade === '' ? null : Math.max(0, Math.min(100, Number(grade)));
+      await dbService.gradeProgress(progressId, numericGrade, comment);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      console.error('Failed to save grade:', err);
+      alert(err?.message || 'Failed to save grade.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  let gradedAtLabel: string | null = null;
+  if (gradedAt) {
+    try {
+      const d = gradedAt?.toDate ? gradedAt.toDate() : new Date(gradedAt);
+      if (!isNaN(d.getTime())) gradedAtLabel = d.toLocaleString();
+    } catch {}
+  }
+
+  return (
+    <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 mt-3">
+      <div className="flex items-center gap-2 mb-3">
+        <Award className="h-4 w-4 text-indigo-600" />
+        <h5 className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Teacher Grading</h5>
+        {gradedAtLabel && (
+          <span className="text-xs text-slate-400 ml-auto">Last graded: {gradedAtLabel}</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-3 items-start">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Grade (0–100)</label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={grade}
+            onChange={(e) => setGrade(e.target.value)}
+            placeholder="—"
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent text-center font-bold"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+            <MessageSquare className="h-3 w-3" /> Feedback for student
+          </label>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Add feedback the student will see…"
+            rows={2}
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end mt-3">
+        <button
+          onClick={handleSave}
+          disabled={!dirty || saving}
+          className={clsx(
+            "inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all",
+            saved
+              ? "bg-green-600 text-white"
+              : dirty
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+          )}
+        >
+          {saved ? <><Check className="h-3.5 w-3.5" /> Saved</> : saving ? 'Saving…' : <><Save className="h-3.5 w-3.5" /> Save grade</>}
+        </button>
       </div>
     </div>
   );
@@ -635,8 +735,19 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
                           onClick={() => setExpandedProgressId(expandedProgressId === prog.id ? null : (prog.id || null))}
                         >
                           <div>
-                            <h4 className="text-sm font-semibold text-slate-800">{lesson?.title || 'Unknown Lesson'}</h4>
-                            <p className="text-xs text-slate-400 capitalize mt-0.5">Mode: {prog.mode.replace('-', ' ')}</p>
+                            <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                              {lesson?.title || 'Unknown Lesson'}
+                              {prog.teacherGrade !== undefined && prog.teacherGrade !== null && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-bold">
+                                  <Award className="h-3 w-3" />
+                                  {prog.teacherGrade}
+                                </span>
+                              )}
+                            </h4>
+                            <p className="text-xs text-slate-400 capitalize mt-0.5">
+                              Mode: {prog.mode.replace('-', ' ')}
+                              {prog.teacherComment && <span className="ml-2 text-indigo-500">• Feedback added</span>}
+                            </p>
                           </div>
                           <div className="flex items-center gap-3 flex-shrink-0">
                             <div className="text-right">
@@ -667,7 +778,13 @@ export function TeacherDashboard({ user, onSelectLesson }: TeacherDashboardProps
 
                         {expandedProgressId === prog.id && (
                           <div className="mt-4 pt-4 border-t border-slate-100">
-                            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Submitted Answers</h5>
+                            <GradingPanel
+                              progressId={prog.id!}
+                              initialGrade={prog.teacherGrade}
+                              initialComment={prog.teacherComment}
+                              gradedAt={prog.gradedAt}
+                            />
+                            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3 mt-5">Submitted Answers</h5>
                             {prog.answers && prog.answers.length > 0 ? (
                               <ul className="space-y-3">
                                 {prog.answers.map((ans, idx) => (

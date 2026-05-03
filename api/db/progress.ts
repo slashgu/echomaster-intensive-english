@@ -26,11 +26,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .where('userId', '==', userId)
         .get();
 
-      const progress = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        completedAt: doc.data().completedAt?.toDate?.()?.toISOString() || null,
-      })).sort((a, b) => {
+      const progress = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          completedAt: data.completedAt?.toDate?.()?.toISOString() || null,
+          gradedAt: data.gradedAt?.toDate?.()?.toISOString() || null,
+        };
+      }).sort((a, b) => {
         const dateA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
         const dateB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
         return dateB - dateA; // Descending
@@ -51,6 +55,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       return res.status(200).json({ id: docRef.id });
+    }
+
+    if (req.method === 'PATCH') {
+      const { id, teacherGrade, teacherComment } = req.body || {};
+      if (!id) {
+        return res.status(400).json({ error: 'Progress id is required.' });
+      }
+
+      const updateData: any = {
+        gradedAt: FieldValue.serverTimestamp(),
+        gradedBy: authUser.uid,
+      };
+      if (teacherGrade !== undefined) {
+        updateData.teacherGrade = teacherGrade === null ? FieldValue.delete() : teacherGrade;
+      }
+      if (teacherComment !== undefined) {
+        updateData.teacherComment = teacherComment;
+      }
+
+      await db.collection('progress').doc(id).update(updateData);
+      return res.status(200).json({ message: 'Progress graded.' });
     }
 
     return res.status(405).json({ error: 'Method Not Allowed' });

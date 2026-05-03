@@ -224,6 +224,10 @@ export const firebaseDbService: IDatabaseService = {
     await setDoc(doc(db, 'users', studentId), { teacherId }, { merge: true });
   },
 
+  async gradeProgress(_progressId, _teacherGrade, _teacherComment) {
+    throw new Error('Not implemented in firebaseService');
+  },
+
   async assignLessonCategory(lessonId, categoryId) {
     const { updateDoc, deleteField } = await import('firebase/firestore');
     const ref = doc(db, 'lessons', lessonId);
