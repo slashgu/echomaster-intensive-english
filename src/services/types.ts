@@ -39,7 +39,7 @@ export interface Progress {
   id?: string;
   userId: string;
   lessonId: string;
-  mode: 'dictation' | 'gap-fill';
+  mode: 'dictation' | 'gap-fill' | 'word-order';
   score: number;
   completedAt: any;
   answers?: ProgressAnswer[];

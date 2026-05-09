@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { dbService, llmService, authService } from '../services';
 import { Sentence, ProgressAnswer } from '../services/types';
-import { ArrowLeft, Play, Pause, Repeat, FastForward, Rewind, HelpCircle, Mic, CheckCircle2, XCircle, Save, Edit3, Award, Clock, X } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Repeat, FastForward, Rewind, HelpCircle, Mic, CheckCircle2, XCircle, Save, Edit3, Award, Clock, X, Shuffle, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import ReactMarkdown from 'react-markdown';
 
@@ -10,15 +10,28 @@ interface StudyRoomProps {
   onBack: () => void;
 }
 
-type Mode = 'dictation' | 'gap-fill';
+type Mode = 'dictation' | 'gap-fill' | 'word-order';
 
 function normalizeForCompare(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+function tokenizeWords(text: string): string[] {
+  return text.split(/\s+/).filter(t => t.length > 0);
+}
+
+function shuffleIndexes(n: number): number[] {
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 function isSentenceCorrect(sentence: Sentence, answer: ProgressAnswer | undefined, mode: Mode): boolean {
   if (!answer) return false;
-  if (mode === 'dictation') {
+  if (mode === 'dictation' || mode === 'word-order') {
     if (typeof answer.userAnswer !== 'string') return false;
     return normalizeForCompare(answer.userAnswer) === normalizeForCompare(sentence.text);
   } else {
@@ -54,6 +67,12 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   const [sentencePieces, setSentencePieces] = useState<string[]>([]);
   const [gaps, setGaps] = useState<number[]>([]);
   const [gapValues, setGapValues] = useState<Record<number, string>>({});
+
+  // Word-order state
+  const [wordOrderTokens, setWordOrderTokens] = useState<string[]>([]);
+  const [wordOrderShuffle, setWordOrderShuffle] = useState<number[]>([]);
+  const [wordOrderSelected, setWordOrderSelected] = useState<number[]>([]);
+  const shuffleCacheRef = useRef<Record<string, number[]>>({});
 
   // Per-mode session answers — keyed by `${mode}:${sentenceId}`
   const [sessionAnswers, setSessionAnswers] = useState<Record<string, ProgressAnswer>>({});
@@ -98,15 +117,51 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
     const selectedGaps = sentence.gapIndexes || [];
     setGaps(selectedGaps);
 
+    // Always recompute word tokens & shuffle for word-order mode
+    const tokens = tokenizeWords(sentence.text);
+    setWordOrderTokens(tokens);
+
+    let cachedShuffle = shuffleCacheRef.current[sentence.id];
+    if (!cachedShuffle || cachedShuffle.length !== tokens.length) {
+      cachedShuffle = shuffleIndexes(tokens.length);
+      // Avoid identical-to-original shuffle for sentences with > 1 word
+      if (tokens.length > 1 && cachedShuffle.every((v, i) => v === i)) {
+        cachedShuffle = shuffleIndexes(tokens.length);
+      }
+      shuffleCacheRef.current[sentence.id] = cachedShuffle;
+    }
+    setWordOrderShuffle(cachedShuffle);
+
     // Restore previously typed answer for THIS sentence + mode (or reset to empty)
     const saved = sessionAnswers[answerKey(mode, sentence.id)];
 
     if (mode === 'dictation') {
       setDictationInput(saved && typeof saved.userAnswer === 'string' ? saved.userAnswer : '');
       setGapValues({});
-    } else {
+      setWordOrderSelected([]);
+    } else if (mode === 'gap-fill') {
       setDictationInput('');
       setGapValues(saved && typeof saved.userAnswer === 'object' ? { ...(saved.userAnswer as Record<number, string>) } : {});
+      setWordOrderSelected([]);
+    } else {
+      // word-order
+      setDictationInput('');
+      setGapValues({});
+      if (saved && typeof saved.userAnswer === 'string' && saved.userAnswer.length > 0) {
+        const savedTokens = tokenizeWords(saved.userAnswer);
+        const used = new Set<number>();
+        const selected: number[] = [];
+        for (const tok of savedTokens) {
+          const idx = tokens.findIndex((t, i) => !used.has(i) && t === tok);
+          if (idx !== -1) {
+            selected.push(idx);
+            used.add(idx);
+          }
+        }
+        setWordOrderSelected(selected);
+      } else {
+        setWordOrderSelected([]);
+      }
     }
 
     setIsExplaining(false);
@@ -141,15 +196,23 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   useEffect(() => {
     if (!currentSentence) return;
     const key = answerKey(mode, currentSentence.id);
+    let userAnswer: string | Record<number, string>;
+    if (mode === 'dictation') {
+      userAnswer = dictationInput;
+    } else if (mode === 'gap-fill') {
+      userAnswer = { ...gapValues };
+    } else {
+      userAnswer = wordOrderSelected.map(i => wordOrderTokens[i]).join(' ');
+    }
     setSessionAnswers(prev => ({
       ...prev,
       [key]: {
         sentenceId: currentSentence.id,
         originalText: currentSentence.text,
-        userAnswer: mode === 'dictation' ? dictationInput : { ...gapValues },
+        userAnswer,
       },
     }));
-  }, [dictationInput, gapValues, currentSentence, mode]);
+  }, [dictationInput, gapValues, wordOrderSelected, wordOrderTokens, currentSentence, mode]);
 
   const handlePlayPause = () => {
     if (!audioRef.current) return;
@@ -183,9 +246,9 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
         answer: ans,
         correct: isSentenceCorrect(s, ans, mode),
         attempted: !!ans && (
-          mode === 'dictation'
-            ? typeof ans.userAnswer === 'string' && ans.userAnswer.trim().length > 0
-            : typeof ans.userAnswer === 'object' && Object.values(ans.userAnswer as Record<number, string>).some(v => v.trim().length > 0)
+          mode === 'gap-fill'
+            ? typeof ans.userAnswer === 'object' && Object.values(ans.userAnswer as Record<number, string>).some(v => v.trim().length > 0)
+            : typeof ans.userAnswer === 'string' && ans.userAnswer.trim().length > 0
         ),
       };
     });
@@ -210,7 +273,7 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
         return ans || {
           sentenceId: s.id,
           originalText: s.text,
-          userAnswer: mode === 'dictation' ? '' : {},
+          userAnswer: mode === 'gap-fill' ? {} : '',
         };
       });
 
@@ -246,6 +309,11 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
     const current = (gapValues[gapIndex] || '').trim().toLowerCase();
     return original === current;
   });
+
+  const wordOrderCorrect =
+    wordOrderTokens.length > 0 &&
+    wordOrderSelected.length === wordOrderTokens.length &&
+    wordOrderSelected.every((origIdx, position) => origIdx === position);
 
   const getAudioSrc = (base64: string) => {
     if (!base64) return '';
@@ -299,7 +367,7 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
             Back
           </button>
           <div className="flex space-x-2">
-            {(['dictation', 'gap-fill'] as Mode[]).map(m => (
+            {(['dictation', 'gap-fill', 'word-order'] as Mode[]).map(m => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
@@ -515,6 +583,128 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
               {allGapsCorrect && gaps.length > 0 && (
                 <div className="flex items-center text-green-600 gap-2 font-medium justify-center mt-4 bg-green-50 p-4 rounded-lg border border-green-200">
                   <CheckCircle2 className="h-6 w-6" /> Perfect! You filled all the blanks.
+                </div>
+              )}
+
+              {showExplanation && (
+                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 mt-auto">
+                  <h4 className="font-medium text-indigo-900 mb-2">Original Text & Explanation</h4>
+                  <p className="text-gray-800 font-medium mb-2">{currentSentence?.text}</p>
+                  {isExplaining ? (
+                    <div className="animate-pulse text-indigo-600 text-sm">Generating explanation...</div>
+                  ) : (
+                    <div className="text-sm text-gray-700 leading-relaxed space-y-2">
+                      <ReactMarkdown
+                        components={{
+                          strong: ({node, ...props}) => <strong className="font-bold text-gray-900" {...props} />,
+                          ul: ({node, ...props}) => <ul className="list-disc pl-5 mt-2 space-y-1" {...props} />,
+                          ol: ({node, ...props}) => <ol className="list-decimal pl-5 mt-2 space-y-1" {...props} />,
+                          p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />
+                        }}
+                      >
+                        {explanation}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {mode === 'word-order' && (
+            <div className="flex-1 flex flex-col gap-6">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-lg font-medium text-gray-900">Tap the words in the order you hear them</h3>
+                <button onClick={handleExplain} className="text-sm text-indigo-600 flex items-center gap-1 hover:underline">
+                  <HelpCircle className="h-4 w-4" /> AI Help
+                </button>
+              </div>
+
+              {wordOrderTokens.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-xl border border-gray-200">
+                  <Shuffle className="mx-auto h-10 w-10 text-gray-300 mb-3" />
+                  <p className="text-gray-500 font-medium">No words to arrange.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Sentence builder area */}
+                  <div className={clsx(
+                    "min-h-[100px] p-4 rounded-xl border-2 border-dashed flex flex-wrap gap-2 items-start content-start transition-colors",
+                    wordOrderCorrect
+                      ? "border-green-400 bg-green-50"
+                      : wordOrderSelected.length > 0
+                        ? "border-indigo-300 bg-indigo-50/40"
+                        : "border-gray-300 bg-gray-50"
+                  )}>
+                    {wordOrderSelected.length === 0 ? (
+                      <span className="text-gray-400 text-sm self-center mx-auto">Your answer will appear here…</span>
+                    ) : (
+                      wordOrderSelected.map((origIdx, position) => (
+                        <button
+                          key={`sel-${position}-${origIdx}`}
+                          onClick={() => setWordOrderSelected(prev => prev.filter((_, i) => i !== position))}
+                          className={clsx(
+                            "px-3 py-1.5 rounded-lg text-base font-medium border-2 shadow-sm transition-all hover:shadow-md active:scale-95",
+                            wordOrderCorrect
+                              ? "bg-green-100 border-green-400 text-green-800"
+                              : "bg-white border-indigo-300 text-indigo-800 hover:border-indigo-500"
+                          )}
+                          title="Click to remove"
+                        >
+                          {wordOrderTokens[origIdx]}
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Available shuffled chips */}
+                  <div className="p-4 rounded-xl border border-gray-200 bg-white">
+                    <div className="flex flex-wrap gap-2">
+                      {wordOrderShuffle
+                        .filter(idx => !wordOrderSelected.includes(idx))
+                        .map(idx => (
+                          <button
+                            key={`chip-${idx}`}
+                            onClick={() => setWordOrderSelected(prev => [...prev, idx])}
+                            className="px-3 py-1.5 rounded-lg text-base font-medium border-2 border-gray-200 bg-white text-gray-800 shadow-sm hover:border-indigo-400 hover:bg-indigo-50 active:scale-95 transition-all"
+                          >
+                            {wordOrderTokens[idx]}
+                          </button>
+                        ))}
+                      {wordOrderShuffle.every(idx => wordOrderSelected.includes(idx)) && (
+                        <span className="text-gray-400 text-sm self-center">All words used.</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => setWordOrderSelected([])}
+                      disabled={wordOrderSelected.length === 0}
+                      className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-indigo-600 disabled:opacity-40 disabled:hover:text-gray-600"
+                    >
+                      <RotateCcw className="h-4 w-4" /> Reset
+                    </button>
+                    <button
+                      onClick={() => {
+                        const fresh = shuffleIndexes(wordOrderTokens.length);
+                        if (wordOrderTokens.length > 1 && fresh.every((v, i) => v === i)) {
+                          fresh.reverse();
+                        }
+                        shuffleCacheRef.current[currentSentence!.id] = fresh;
+                        setWordOrderShuffle(fresh);
+                      }}
+                      className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-indigo-600"
+                    >
+                      <Shuffle className="h-4 w-4" /> Reshuffle
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {wordOrderCorrect && wordOrderTokens.length > 0 && (
+                <div className="flex items-center text-green-600 gap-2 font-medium justify-center mt-2 bg-green-50 p-4 rounded-lg border border-green-200">
+                  <CheckCircle2 className="h-6 w-6" /> Perfect order!
                 </div>
               )}
 
