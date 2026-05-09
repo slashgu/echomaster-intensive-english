@@ -74,6 +74,53 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
   const [wordOrderSelected, setWordOrderSelected] = useState<number[]>([]);
   const shuffleCacheRef = useRef<Record<string, number[]>>({});
 
+  // Drag-and-drop for word-order
+  type WordDrag =
+    | { from: 'selected'; position: number }
+    | { from: 'available'; origIdx: number };
+  const [wordDrag, setWordDrag] = useState<WordDrag | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<number | null>(null); // insertion index in selected list
+
+  const handleWordDragStart = (e: React.DragEvent, source: WordDrag) => {
+    setWordDrag(source);
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox requires data to be set for drag to start
+    e.dataTransfer.setData('text/plain', '');
+  };
+
+  const handleWordDragEnd = () => {
+    setWordDrag(null);
+    setDropIndicator(null);
+  };
+
+  const moveSelected = (insertAt: number) => {
+    if (!wordDrag) return;
+    setWordOrderSelected(prev => {
+      if (wordDrag.from === 'available') {
+        const next = [...prev];
+        next.splice(insertAt, 0, wordDrag.origIdx);
+        return next;
+      }
+      // from selected: relocate within list
+      const next = [...prev];
+      const [moved] = next.splice(wordDrag.position, 1);
+      const adjusted = insertAt > wordDrag.position ? insertAt - 1 : insertAt;
+      next.splice(adjusted, 0, moved);
+      return next;
+    });
+    setWordDrag(null);
+    setDropIndicator(null);
+  };
+
+  const handleDropOnAvailable = () => {
+    if (!wordDrag) return;
+    if (wordDrag.from === 'selected') {
+      setWordOrderSelected(prev => prev.filter((_, i) => i !== wordDrag.position));
+    }
+    setWordDrag(null);
+    setDropIndicator(null);
+  };
+
   // Per-mode session answers — keyed by `${mode}:${sentenceId}`
   const [sessionAnswers, setSessionAnswers] = useState<Record<string, ProgressAnswer>>({});
 
@@ -627,52 +674,135 @@ export function StudyRoom({ lessonId, onBack }: StudyRoomProps) {
                 </div>
               ) : (
                 <>
-                  {/* Sentence builder area */}
-                  <div className={clsx(
-                    "min-h-[100px] p-4 rounded-xl border-2 border-dashed flex flex-wrap gap-2 items-start content-start transition-colors",
-                    wordOrderCorrect
-                      ? "border-green-400 bg-green-50"
-                      : wordOrderSelected.length > 0
-                        ? "border-indigo-300 bg-indigo-50/40"
-                        : "border-gray-300 bg-gray-50"
-                  )}>
+                  {/* Sentence builder area — drop target with insertion gaps */}
+                  <div
+                    className={clsx(
+                      "min-h-[100px] p-3 rounded-xl border-2 border-dashed flex flex-wrap items-start content-start transition-colors",
+                      wordOrderCorrect
+                        ? "border-green-400 bg-green-50"
+                        : wordDrag
+                          ? "border-indigo-400 bg-indigo-50/60"
+                          : wordOrderSelected.length > 0
+                            ? "border-indigo-300 bg-indigo-50/40"
+                            : "border-gray-300 bg-gray-50"
+                    )}
+                    onDragOver={(e) => {
+                      if (!wordDrag) return;
+                      e.preventDefault();
+                      // Default: drop at end if not over a chip/gap
+                      if (dropIndicator === null) setDropIndicator(wordOrderSelected.length);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      moveSelected(dropIndicator ?? wordOrderSelected.length);
+                    }}
+                  >
                     {wordOrderSelected.length === 0 ? (
-                      <span className="text-gray-400 text-sm self-center mx-auto">Your answer will appear here…</span>
+                      <span className="text-gray-400 text-sm self-center mx-auto">
+                        {wordDrag ? 'Drop here to add' : 'Tap or drag a word to begin…'}
+                      </span>
                     ) : (
-                      wordOrderSelected.map((origIdx, position) => (
-                        <button
-                          key={`sel-${position}-${origIdx}`}
-                          onClick={() => setWordOrderSelected(prev => prev.filter((_, i) => i !== position))}
-                          className={clsx(
-                            "px-3 py-1.5 rounded-lg text-base font-medium border-2 shadow-sm transition-all hover:shadow-md active:scale-95",
-                            wordOrderCorrect
-                              ? "bg-green-100 border-green-400 text-green-800"
-                              : "bg-white border-indigo-300 text-indigo-800 hover:border-indigo-500"
-                          )}
-                          title="Click to remove"
+                      <>
+                        {wordOrderSelected.map((origIdx, position) => (
+                          <React.Fragment key={`sel-${position}-${origIdx}`}>
+                            {/* Insertion slot before this chip */}
+                            <div
+                              className="self-stretch flex items-center"
+                              onDragOver={(e) => {
+                                if (!wordDrag) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDropIndicator(position);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                moveSelected(position);
+                              }}
+                            >
+                              <div className={clsx(
+                                "w-1 mx-0.5 rounded-full transition-all",
+                                dropIndicator === position && wordDrag ? "h-8 bg-indigo-500" : "h-6 bg-transparent"
+                              )} />
+                            </div>
+                            <button
+                              draggable
+                              onDragStart={(e) => handleWordDragStart(e, { from: 'selected', position })}
+                              onDragEnd={handleWordDragEnd}
+                              onClick={() => setWordOrderSelected(prev => prev.filter((_, i) => i !== position))}
+                              className={clsx(
+                                "my-1 px-3 py-1.5 rounded-lg text-base font-medium border-2 shadow-sm transition-all hover:shadow-md active:scale-95 cursor-grab active:cursor-grabbing",
+                                wordDrag?.from === 'selected' && wordDrag.position === position && "opacity-40",
+                                wordOrderCorrect
+                                  ? "bg-green-100 border-green-400 text-green-800"
+                                  : "bg-white border-indigo-300 text-indigo-800 hover:border-indigo-500"
+                              )}
+                              title="Drag to reorder, or click to remove"
+                            >
+                              {wordOrderTokens[origIdx]}
+                            </button>
+                          </React.Fragment>
+                        ))}
+                        {/* Trailing insertion slot (insert at end) */}
+                        <div
+                          className="self-stretch flex items-center flex-1 min-w-[16px]"
+                          onDragOver={(e) => {
+                            if (!wordDrag) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDropIndicator(wordOrderSelected.length);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            moveSelected(wordOrderSelected.length);
+                          }}
                         >
-                          {wordOrderTokens[origIdx]}
-                        </button>
-                      ))
+                          <div className={clsx(
+                            "w-1 mx-0.5 rounded-full transition-all",
+                            dropIndicator === wordOrderSelected.length && wordDrag ? "h-8 bg-indigo-500" : "h-6 bg-transparent"
+                          )} />
+                        </div>
+                      </>
                     )}
                   </div>
 
-                  {/* Available shuffled chips */}
-                  <div className="p-4 rounded-xl border border-gray-200 bg-white">
+                  {/* Available shuffled chips — also drop target (drop here to remove from selected) */}
+                  <div
+                    className={clsx(
+                      "p-4 rounded-xl border bg-white transition-colors",
+                      wordDrag?.from === 'selected' ? "border-amber-300 bg-amber-50/40" : "border-gray-200"
+                    )}
+                    onDragOver={(e) => {
+                      if (wordDrag?.from === 'selected') e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleDropOnAvailable();
+                    }}
+                  >
                     <div className="flex flex-wrap gap-2">
                       {wordOrderShuffle
                         .filter(idx => !wordOrderSelected.includes(idx))
                         .map(idx => (
                           <button
                             key={`chip-${idx}`}
+                            draggable
+                            onDragStart={(e) => handleWordDragStart(e, { from: 'available', origIdx: idx })}
+                            onDragEnd={handleWordDragEnd}
                             onClick={() => setWordOrderSelected(prev => [...prev, idx])}
-                            className="px-3 py-1.5 rounded-lg text-base font-medium border-2 border-gray-200 bg-white text-gray-800 shadow-sm hover:border-indigo-400 hover:bg-indigo-50 active:scale-95 transition-all"
+                            className={clsx(
+                              "px-3 py-1.5 rounded-lg text-base font-medium border-2 border-gray-200 bg-white text-gray-800 shadow-sm hover:border-indigo-400 hover:bg-indigo-50 active:scale-95 transition-all cursor-grab active:cursor-grabbing",
+                              wordDrag?.from === 'available' && wordDrag.origIdx === idx && "opacity-40"
+                            )}
                           >
                             {wordOrderTokens[idx]}
                           </button>
                         ))}
                       {wordOrderShuffle.every(idx => wordOrderSelected.includes(idx)) && (
-                        <span className="text-gray-400 text-sm self-center">All words used.</span>
+                        <span className="text-gray-400 text-sm self-center">
+                          {wordDrag?.from === 'selected' ? 'Drop here to remove a word' : 'All words used.'}
+                        </span>
                       )}
                     </div>
                   </div>
